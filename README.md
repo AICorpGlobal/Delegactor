@@ -10,11 +10,7 @@ This numbers are per cluster.
 
 (old numbers )
 
-![image](https://github.com/jazeem-azeez/Delegactor/assets/8478849/e0bcf65d-2ca8-41dd-a4e1-be345c97ec50)
-
 - new ones using code gen reaches RMQ headroom (10k-20k rps )
-
-![image](https://github.com/jazeem-azeez/Delegactor/assets/8478849/8efcd75e-25a2-43a1-bef8-95cee8e703d0)
  
 
 Won't be investing there(Performance) right now, instead will focus more on reliability and resilence
