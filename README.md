@@ -9,9 +9,11 @@ reduced/moved from castle_proxy based invokation to code generation for poxy cli
 This numbers are per cluster.
 
 (old numbers )
+![image](https://github.com/AICorpGlobal/Delegactor/assets/8478849/ae5ec8bf-a441-4d3d-9c9d-36966b46735b)
 
 - new ones using code gen reaches RMQ headroom (10k-20k rps )
- 
+ ![image](https://github.com/AICorpGlobal/Delegactor/assets/8478849/f655920a-9a7f-40aa-acff-8df6fb370b34)
+
 
 Won't be investing there(Performance) right now, instead will focus more on reliability and resilence
 
