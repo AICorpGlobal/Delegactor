@@ -1,6 +1,6 @@
 # Delegactor
 
-Still in beta/exporative develpment. Read ActorFramework.md for a detailed understanding. 
+Still in beta/exporative develpment. [Read](./docs/ActorFramework.md) for a detailed understanding. 
 
 reduced/moved from castle_proxy based invokation to code generation for poxy client 
 - a bug was found, have to move out from castle proxy layer as its calls are blocking and that results in lower request rate
