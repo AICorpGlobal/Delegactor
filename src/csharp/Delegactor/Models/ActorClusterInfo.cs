@@ -12,10 +12,12 @@ namespace Delegactor.Models
         public string Signature { get; set; }
         public int ReplicaNodes { get; set; }
 
-        public int ComputePartitionKey(string argKey, string nodesRole)
+        public int ComputeKey(string argKey)
         {
-            var node = nodesRole == "partition" ? PartitionsNodes : ReplicaNodes / PartitionsNodes;
-            return argKey.ToCharArray().Sum(x => x * 10) % node;
+            if (PartitionsNodes == 0)
+                return PartitionsNodes;
+
+            return argKey.ToCharArray().Sum(x => x * 7) % PartitionsNodes;
         }
 
         public ActorClusterInfo Set(ActorClusterInfo clusterInfo)

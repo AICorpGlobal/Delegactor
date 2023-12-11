@@ -5,6 +5,7 @@ using Delegactor.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Exception = System.Exception;
 
 namespace Delegactor.Core
 {
@@ -41,9 +42,27 @@ namespace Delegactor.Core
         {
             try
             {
-                var serviceInstance = await _actorNodeManager.GetServiceInstance(request);
-                var response = await serviceInstance.Key.InvokeMethod(request);
-                return response;
+                if (!request.Headers.ContainsKey("requestType"))
+                {
+                    var actorInstance = await _actorNodeManager.GetActorInstance(request);
+
+                    var response = await actorInstance.Key.InvokeMethod(request);
+                    return response;
+                }
+                
+                if (request.Headers.TryGetValue("requestType", out var requestType) && requestType.ToString() == "notify")
+                {
+                    var instances = await _actorNodeManager.GetAllActorInstances(request);
+                    List<Task> tasks = new List<Task>();
+                    foreach (var instance in instances)
+                    {
+                        tasks.Add(instance.Key.InvokeMethod(request));
+                    }
+
+                    await Task.WhenAll(tasks);
+
+                }
+                return new ActorResponse(request);
             }
             catch (Exception exception)
             {

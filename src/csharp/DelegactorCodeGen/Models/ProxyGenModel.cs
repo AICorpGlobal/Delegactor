@@ -12,5 +12,6 @@ namespace DelegactorCodeGen
         public string NameSpaceName { get; set; }
 
         public List<Method> MethodsList { get; set; }
+        public List<string> NameSpaceNameCollection { get; set; }
     }
 }

@@ -31,8 +31,14 @@ namespace ConsoleDelegatorApplication
             // _logger.LogInformation(" {ActorId} in {TypeOfNode} calculating sum", ActorId, _actorNodeInfo.NodeRole);
             sum += a + b;
             return sum;
-        }        
-        
+        }
+
+        [RemoteInvokableMethod(isBroadcastNotify:true)]
+        public async Task Notify(int a, int b)
+        {  
+            _logger.LogInformation(" {ActorId} in {TypeOfNode} Got Notify", ActorId, _actorNodeInfo.NodeRole);
+        }
+
         [RemoteInvokableMethod(fromReplica:false)]
         public virtual async Task<int> Diff(int a, int b, ActorRequest request = null)
         {

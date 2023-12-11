@@ -37,7 +37,7 @@ namespace ClientApplication // Note: actual namespace depends on the project nam
                         new ActorClusterInfo
                         {
                             ClusterName = Environment.MachineName,
-                            PartitionsNodes = 1,
+                            PartitionsNodes = 2,
                             ReplicaNodes = 2,
                             HeartBeatWindowInSeconds = 5,
                             LastUpdateTime = DateTime.UtcNow
@@ -61,29 +61,20 @@ namespace ClientApplication // Note: actual namespace depends on the project nam
 
             var proxy = host.Services.GetService<IActorProxy>();
 
-            // Console.ReadLine();
-
-            // var logger =  host.Services.GetService<ILogger<ICalculator>>();
-            benchmark:
-            
-            Console.WriteLine("Press Enter to start");
             Console.ReadLine();
             
             
             var calculator = proxy.GetProxyViaInterfaceCodeGen<ICalculator>("1234");
-            
+            // await calculator.Sum(1, 2);
+            //
+            // // Console.ReadLine();
+            //
+            // var logger =  host.Services.GetService<ILogger<ICalculator>>();
+            benchmark:
             var stopWatch = Stopwatch.StartNew();
-            await calculator.Sum(1, 2);
-            stopWatch.Stop();
-            Console.WriteLine($" total time {stopWatch.Elapsed} :: {stopWatch.Elapsed.TotalSeconds} ");            //
+            List<Task<int>> pool = new List<Task<int>>(200000);
             
-            await Task.Delay(2000);
-
-            var capacity = 900000;
-
-            List<Task<int>> pool = new List<Task<int>>(capacity);
-
-            for (var i = 0; i < capacity; i++)
+            for (var i = 0; i < 200000; i++)
             {            
                 calculator = proxy.GetProxyViaInterfaceCodeGen<ICalculator>(Random.Shared.NextInt64(20000).ToString());
                 pool.Add( calculator.Sum(1, 2));
@@ -93,12 +84,15 @@ namespace ClientApplication // Note: actual namespace depends on the project nam
             //     var calculator = proxy.GetProxyViaInterfaceCodeGen<ICalculator>(Random.Shared.NextInt64(20000).ToString());
             //     pool.Add( calculator.Diff(1, 2));
             // }
-
+            
             await Task.WhenAll(pool);
             stopWatch.Stop();
 
             Console.WriteLine($" total time {stopWatch.Elapsed} :: {stopWatch.Elapsed.TotalSeconds} ");
-            Console.WriteLine($"type r to run test: enter to exit ");
+            Console.WriteLine($"Press enter to send BroadCast");
+            Console.ReadLine();
+            await calculator.Notify(1, 2);
+            Console.WriteLine($"type y to run test: enter to exit ");
             var input = Console.ReadLine();
             if (input.ToLower() == "y")
             {

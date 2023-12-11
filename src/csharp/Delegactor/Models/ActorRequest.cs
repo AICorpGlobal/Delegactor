@@ -1,5 +1,7 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
+using System.Text.Json.Serialization;
+
 namespace Delegactor.Models
 {
     public class ActorRequest
@@ -23,5 +25,10 @@ namespace Delegactor.Models
 
         public string ActorId { get; set; }
         public string PartitionType { get; set; }
+
+        public string Uid { get => $"{Module}-+-{ActorId}"; }
+        
+        [JsonIgnore]
+        public bool IsNotityRequest { get => Headers.ContainsKey("requestType") && Headers["requestType"].ToString() == "notify"; }
     }
 }

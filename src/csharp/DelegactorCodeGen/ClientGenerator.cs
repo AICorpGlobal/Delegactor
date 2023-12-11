@@ -40,12 +40,12 @@ namespace DelegactorCodeGen
             foreach (var interfaceDefenitions in receiver.Collection)
             {
                 var hintName = $"{interfaceDefenitions.ClassName}ClientProxy.g.cs";
-                
+
                 if (context.Compilation.SyntaxTrees.ToList().Any(x => x.FilePath.EndsWith(hintName)))
                 {
                     continue;
                 }
-                
+
                 var result = ProxyGenCodeTemplate.Generate(interfaceDefenitions);
 
                 context.AddSource(hintName, SourceText.From(result, Encoding.Default));
@@ -61,10 +61,10 @@ namespace DelegactorCodeGen
         public void Initialize(GeneratorInitializationContext initializer)
         {
 #if DEBUG
-            // if (!Debugger.IsAttached)
-            // {
-            //     Debugger.Launch();
-            // }
+            //if (!Debugger.IsAttached)
+            //{
+            //    Debugger.Launch();
+            //}
 #endif
 
             // Register the syntax receiver.
@@ -93,19 +93,21 @@ namespace DelegactorCodeGen
                     var baseTypes = interfaceDeclarationSyntax.BaseList.Types;
                     foreach (var baseType in baseTypes)
                     {
-                        if (baseType.Type is SimpleNameSyntax simpleBaseTypeSyntax&&
+                        if (baseType.Type is SimpleNameSyntax simpleBaseTypeSyntax &&
                             simpleBaseTypeSyntax.Identifier.ValueText.StartsWith(InterfaceName))
                         {
-
                             var namespaceDeclarationSyntax =
                                 interfaceDeclarationSyntax.Parent as NamespaceDeclarationSyntax;
 
                             if (namespaceDeclarationSyntax != null)
                             {
+                                var usings = syntaxNode.SyntaxTree.GetRoot().DescendantNodes()
+                                    .OfType<UsingDirectiveSyntax>();
                                 var nameSpaceName = namespaceDeclarationSyntax.Name.GetText().ToString();
                                 var interfaceName = interfaceDeclarationSyntax.Identifier.Text;
                                 var candidate = new ProxyGenModel
                                 {
+                                    NameSpaceNameCollection = usings.Select(x => x.ToFullString()).ToList(),
                                     NameSpaceName = nameSpaceName,
                                     ClassName = $"{interfaceName.TrimStart('I')}",
                                     InterfaceName = interfaceName,
@@ -119,7 +121,11 @@ namespace DelegactorCodeGen
                                         var parameterListParameters =
                                             methodDeclarationSyntax.ParameterList.Parameters.ToList();
 
-                                        var isFromReplicaFlagTrue = GetIsFromReplicaFlag(methodDeclarationSyntax);
+                                        var remoteInvokeAttributteDetails = GetRemoteInvokeAttributteDetails(methodDeclarationSyntax);
+
+                                        var returnType = methodDeclarationSyntax.ReturnType.GetText().ToString();
+
+                                        returnType = ProxyGenCodeTemplate.ReplaceStartTokenOf(returnType.Trim(), "Task", "");
 
                                         var method = new Method
                                         {
@@ -127,8 +133,10 @@ namespace DelegactorCodeGen
                                                 methodDeclarationSyntax.ParameterList.ToFullString(),
                                             ParametersCollection = parameterListParameters
                                                 .Select(x => x.Identifier.Text).ToList(),
-                                            ReturnType = methodDeclarationSyntax.ReturnType.GetText().ToString().Replace("Task",""),
-                                            IsFromReplica = isFromReplicaFlagTrue ? "replica" : "partition",
+                                            ReturnType = returnType,
+                                            IsFromReplica = remoteInvokeAttributteDetails.isFromReplicaFlagTrue ? "replica" : "partition",
+                                            IsEnabled = remoteInvokeAttributteDetails.isEnabled ? "true" : "false",
+                                            IsBroadcastNotify = remoteInvokeAttributteDetails.isBroadcastNotify ? "true" : "false",
                                             MethodName = methodDeclarationSyntax.Identifier.Text
                                         };
 
@@ -143,28 +151,62 @@ namespace DelegactorCodeGen
                 }
             }
 
-            private static bool GetIsFromReplicaFlag(MethodDeclarationSyntax methodDeclarationSyntax)
+
+            private static ( bool isFromReplicaFlagTrue, bool isEnabled, bool isBroadcastNotify) GetRemoteInvokeAttributteDetails(
+                MethodDeclarationSyntax methodDeclarationSyntax)
             {
                 var isFromReplicaFlagTrue = false;
-                foreach (var x in methodDeclarationSyntax.AttributeLists)
+                var isEnabled = false;
+                var isBroadcastNotify = false;
+
+                foreach (var attributeListSyntax in methodDeclarationSyntax.AttributeLists)
                 {
-                    foreach (var y in x.Attributes)
+                    foreach (var attributeSyntax in attributeListSyntax.Attributes)
                     {
-                        if (y.GetText().ToString().Contains("fromReplica") &&
-                            y.GetText().ToString().Contains("true"))
+                        if (attributeSyntax.Name.ToString()=="RemoteInvokableMethod" )
                         {
-                            isFromReplicaFlagTrue = true;
-                            break;
+                            foreach ( var argument in attributeSyntax.ArgumentList.Arguments)
+                            {
+                                if (argument.NameColon is NameColonSyntax nameColonSyntax)
+                                {
+                                    if (nameColonSyntax.Name.ToString().ToLower().Trim() == "fromreplica" &&
+                                        nameColonSyntax.Parent.ToString().Contains("true"))
+                                    {
+                                        isFromReplicaFlagTrue = true;
+                                    }
+
+                                    if (nameColonSyntax.Name.ToString().ToLower().Trim() == "enabled" &&
+                                        nameColonSyntax.Parent.ToString().Contains("true"))
+                                    {
+                                        isEnabled = true;
+                                    }
+
+                                    if (nameColonSyntax.Name.ToString().ToLower().Trim() == "isbroadcastnotify" &&
+                                        nameColonSyntax.Parent.ToString().Contains("true"))
+                                    {
+                                        isBroadcastNotify = true;
+                                    }
+                                }
+                            }
                         }
                     }
-
-                    if (isFromReplicaFlagTrue)
-                    {
-                        break;
-                    }
+                    // foreach (var y in x.Attributes)
+                    // {
+                    //     if ( y.GetText().ToString().Contains("fromReplica") &&
+                    //         y.GetText().ToString().Contains("true"))
+                    //     {
+                    //         isFromReplicaFlagTrue = true;
+                    //         break;
+                    //     }
+                    // }
+                    //
+                    // if (isFromReplicaFlagTrue)
+                    // {
+                    //     break;
+                    // }
                 }
 
-                return isFromReplicaFlagTrue;
+                return (isFromReplicaFlagTrue, isEnabled, isBroadcastNotify);
             }
         }
 

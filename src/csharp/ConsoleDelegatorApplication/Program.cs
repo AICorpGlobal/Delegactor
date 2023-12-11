@@ -40,7 +40,7 @@ namespace ConsoleDelegatorApplication // Note: actual namespace depends on the p
                         new ActorClusterInfo()
                         {
                             ClusterName = Environment.MachineName,
-                            PartitionsNodes = 1,
+                            PartitionsNodes = 2,
                             ReplicaNodes = 2,
                             HeartBeatWindowInSeconds = 5,
                             LastUpdateTime = DateTime.UtcNow

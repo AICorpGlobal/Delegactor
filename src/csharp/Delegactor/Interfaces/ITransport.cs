@@ -14,5 +14,6 @@ namespace Delegactor.Interfaces
         void SendResponse(ActorResponse response);
 
         bool Shutdown();
+        Task<ActorResponse> SendBroadCastNotify(ActorRequest request);
     }
 }

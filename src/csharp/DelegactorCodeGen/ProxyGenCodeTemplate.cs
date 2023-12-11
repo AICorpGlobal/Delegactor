@@ -24,6 +24,12 @@ using Delegactor.CodeGen;
 using Delegactor.Interfaces;
 using Delegactor.Models;
 using Microsoft.Extensions.Logging;
+ 
+{{for entry in namespacenamecollection}}
+            
+{{usingdirective}}
+
+{{end}}
 
 namespace {{namespacename}}
 {
@@ -76,7 +82,7 @@ namespace {{namespacename}}
             
             __request.Parameters = keyValuePairs;
 
-{{if method.returnType equals "" }}
+{{if method.returntype equals "" }}
 
             bool noWait = true;
 
@@ -84,20 +90,26 @@ namespace {{namespacename}}
 
             bool noWait = false;
             
-{{endif}}
+{{endif}} 
 
-            ActorResponse resp = await _transport.SendRequest(__request, noWait);
+{{if method.isbroadcastnotify equals true }}
 
-            if(noWait)
-            {
-                return default;
-            }
+            ActorResponse resp = await _transport.SendBroadCastNotify(__request);
+
+{{else}}
+            ActorResponse resp = await _transport.SendRequest(__request, noWait);  
+            
+           
             if (resp.IsError)
             {
                 throw new AggregateException(resp.Error);
             }
 
-{{if method.returnType equals string.Empty }}
+{{endif}}
+
+/*{{method.returntype}}*/
+
+{{if method.returntype equals "" }}
 
             return;
 
@@ -126,10 +138,11 @@ namespace {{namespacename}}
                 Dictionary<string, object> detail = new Dictionary<string, object>()
                 {
                     { "method.isfromreplica", method.IsFromReplica.Trim() },
+                    { "method.isenabled", method.IsEnabled.Trim() },
+                    { "method.isbroadcastnotify", method.IsBroadcastNotify.Trim() },
                     { "method.methodname", method.MethodName.Trim() },
                     { "method.parameterdeclarations", method.ParameterDeclarations },
                     { "method.parameterscollection", parameterCollections },
-                    { "method.nowait", "false" },
                     { "method.returntype", CleanNewLine(method.ReturnType.Trim()) },
                 };
                 methodList.Add(detail);
@@ -138,6 +151,8 @@ namespace {{namespacename}}
             Dictionary<string, object> keyCollections = new Dictionary<string, object>()
             {
                 { "interfacename", interfaceDefinitions.InterfaceName.Trim() },
+                { "namespacenamecollection", interfaceDefinitions.NameSpaceNameCollection.Distinct()
+                    .Select(x => new Dictionary<string, object> { { "usingdirective", x.Trim() } }).ToList() },
                 { "classname", interfaceDefinitions.ClassName.Trim() },
                 { "modulename", CleanNewLine(interfaceDefinitions.ModuleName.Trim()) },
                 { "namespacename", CleanNewLine(interfaceDefinitions.NameSpaceName.Trim()) },
@@ -153,8 +168,12 @@ namespace {{namespacename}}
 
             return stringBuilder.ToString();
         }
+        public static string ReplaceStartTokenOf(this string returnType, string token, string subsititute)
+        {
+            return returnType.StartsWith(token.CleanNewLine()) ? $"{subsititute}{returnType.Substring(token.Length, returnType.Length - token.Length)}" : returnType;
+        }
 
-        private static string CleanNewLine(string input)
+        public static string CleanNewLine(this string input)
         {
             char[] output = new char[input.Length];
 
@@ -250,22 +269,25 @@ namespace {{namespacename}}
             string operand = statementTokens[2];
 
             var lhs = keyCollections.TryGetValue(statementTokens[1], out var valueData)
-                ? valueData
-                : statementTokens[1];
+                ? valueData.ToString().Trim()
+                : statementTokens[1].Trim();
             var rhs = keyCollections.TryGetValue(statementTokens[3], out var valueDataRhs)
-                ? valueDataRhs
-                : statementTokens[3];
+                ? valueDataRhs.ToString().Trim()
+                : statementTokens[3].Trim();
 
             bool conditionalResult = false;
+
+            lhs = lhs == "\"\"" ? string.Empty : lhs;
+            rhs = rhs == "\"\"" ? string.Empty : rhs;
 
             switch (operand)
             {
                 case "equals":
-                    conditionalResult = lhs.Equals(rhs);
+                    conditionalResult = lhs.ToString().Trim().Equals(rhs.ToString().Trim());
                     break;
 
                 case "not":
-                    conditionalResult = !(lhs.Equals(rhs));
+                    conditionalResult = !(lhs.ToString().Trim().Equals(rhs.ToString().Trim()));
                     break;
             }
 
@@ -289,8 +311,8 @@ namespace {{namespacename}}
 
             var startIndex = statement.StatementText.Length;
             var lastIndexOf =
-                    loopStatement.StatementText.LastIndexOf("{{end}}") + "{{end}}".Length
-                ;
+                    loopStatement.StatementText.LastIndexOf("{{end}}") + "{{end}}".Length;
+
             var statementTextLength = lastIndexOf - startIndex;
 
 

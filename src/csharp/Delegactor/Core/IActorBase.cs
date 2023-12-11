@@ -7,12 +7,12 @@ namespace Delegactor.Core
 {
     public interface IActorBase:IDelegactorProxy<IActorBase>
     {
-        int MaxPartitions { get; set; }
+        public int MaxPartitions { get; set; }
         // string ActorId { get; set; }
-        TimeSpan ActivationWindow { get; set; }
-        string Module { get; set; }
-        Task<ActorResponse> InvokeMethod(ActorRequest request);
-        Task OnLoad(ActorRequest actorRequest);
-        Task OnUnLoad(ActorRequest actorRequest);
+        public TimeSpan ActivationWindow { get; set; }
+        public string Module { get; set; }
+        public Task<ActorResponse> InvokeMethod(ActorRequest request);
+        public Task OnLoad(ActorRequest actorRequest);
+        public Task OnUnLoad(ActorRequest actorRequest);
     }
 }

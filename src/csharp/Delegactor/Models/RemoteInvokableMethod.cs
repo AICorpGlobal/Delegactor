@@ -5,19 +5,17 @@ namespace Delegactor.Models
     [AttributeUsage(AttributeTargets.Method)]
     public class ConcurrentMethodAttribute : Attribute
     {
-        public ConcurrentMethodAttribute(InvokeType invokeType = InvokeType.Concurrent)
-        {
-            InvokeType = invokeType;
-        }
-
-        public InvokeType InvokeType { get; }
+        public InvokeType InvokeType { get=>InvokeType.Concurrent; }
     }
 
     [AttributeUsage(AttributeTargets.Method)]
     public class RemoteInvokableMethod : Attribute
     {
-        public RemoteInvokableMethod(bool enabled = true, bool fromReplica = false)
+        private readonly bool IsBroadcastNotify;
+
+        public RemoteInvokableMethod(bool enabled = true, bool fromReplica = false, bool isBroadcastNotify=false)
         {
+            IsBroadcastNotify = isBroadcastNotify;
             FromReplica = fromReplica;
             Enabled = enabled;
         }

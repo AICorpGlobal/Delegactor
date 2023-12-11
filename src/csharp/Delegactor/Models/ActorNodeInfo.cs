@@ -46,17 +46,17 @@ namespace Delegactor.Models
             return this;
         }
 
-        public int GetListenerId(ActorClusterInfo clusterInfo)
+        public int GetSubscriptionId(ActorClusterInfo clusterInfo)
         {
-            if (NodeType == nameof(ActorClient))
-            {
-                return 0;
-            }
+            //buggy needs to fix this to scale further
 
-            var nodeBundle = NodeRole == "partition"
-                ? clusterInfo.PartitionsNodes
-                : clusterInfo.ReplicaNodes / clusterInfo.PartitionsNodes - 1;
-            return PartitionNumber!.Value % nodeBundle;
+            var partitionNumber = PartitionNumber.GetValueOrDefault(0);
+
+            int nodeBundle = NodeRole == "partition"
+                ? partitionNumber
+                : (partitionNumber % clusterInfo.PartitionsNodes);
+
+            return nodeBundle;
         }
     }
 }

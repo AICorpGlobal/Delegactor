@@ -70,6 +70,13 @@ namespace Delegactor.Core
             }
         }
 
+        public async Task<List<KeyValuePair<ActorBase, ActorStates>>> GetAllActorInstances(ActorRequest request)
+        {
+          var keys=  _actorCollection.Keys.Where(x => x.StartsWith(request.Module)).ToList();
+          var actors = _actorCollection.Where(x => keys.Contains(x.Key)).Select(x=>x.Value).ToList();
+          return actors;
+        }
+
         private async Task UnloadActors(List<string> keys)
         {
             var memberInfo = typeof(ActorBase).GetMethod(nameof(ActorBase.OnUnLoad));
@@ -106,19 +113,21 @@ namespace Delegactor.Core
             }
         }
 
-        public async Task<KeyValuePair<ActorBase, ActorStates>> GetServiceInstance(ActorRequest request)
+        public async Task<KeyValuePair<ActorBase, ActorStates>> GetActorInstance(ActorRequest request)
         {
-            if (request.Name == nameof(ActorBase.OnUnLoad)
-                && _actorCollection.ContainsKey(request.ActorId))
-            {
-                _actorCollection.TryRemove(request.ActorId, out var actor);
+            var requestActorId = $"{request.Module}-+-{request.ActorId}";
 
-                _activationTimeStamps.TryRemove(request.ActorId, out _);
+            if (request.Name == nameof(ActorBase.OnUnLoad)
+                && _actorCollection.ContainsKey(requestActorId))
+            {
+                _actorCollection.TryRemove(requestActorId, out var actor);
+
+                _activationTimeStamps.TryRemove(requestActorId, out _);
 
                 return actor;
             }
 
-            var serviceInstance = _actorCollection.GetOrAdd(request.ActorId, key =>
+            var serviceInstance = _actorCollection.GetOrAdd(requestActorId, key =>
             {
                 var serviceType = _actorServiceDiscovery.GetServiceType(request.Module);
                 if (serviceType == null)
@@ -137,7 +146,7 @@ namespace Delegactor.Core
 
             });
 
-            _activationTimeStamps.AddOrUpdate(request.ActorId,
+            _activationTimeStamps.AddOrUpdate(requestActorId,
                 key => DateTime.Now,
                 (key, _) => DateTime.Now);
 
@@ -228,7 +237,7 @@ namespace Delegactor.Core
 
             expiredActors = _actorCollection
                 .Where(x => _actorNodeInfo.PartitionNumber ==
-                            _clusterInfo.ComputePartitionKey(x.Key, _actorNodeInfo.NodeRole))
+                            _clusterInfo.ComputeKey(x.Key))
                 .Select(x => x.Key).Union(expiredActors).ToList();
             return expiredActors;
         }

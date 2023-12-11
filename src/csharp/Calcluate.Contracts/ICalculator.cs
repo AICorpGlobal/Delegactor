@@ -10,11 +10,12 @@ namespace Calcluate.Contracts
     {
         [RemoteInvokableMethod(fromReplica: true)]
         public Task<int> Sum(int a, int b, ActorRequest? request = null);
-        
+
+        [RemoteInvokableMethod(isBroadcastNotify:true)]
+        public Task Notify(int a, int b);
+
+        [ConcurrentMethod]
         [RemoteInvokableMethod(fromReplica: false)]
         Task<int> Diff(int a, int b, ActorRequest request = null);
     }
-
- 
-
 }

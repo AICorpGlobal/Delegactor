@@ -12,6 +12,7 @@ There is a control pannel for simulator where you can add vessel entries then se
 There is a Live dashboard where you should be able to see the metrics of vessel and the profit/loss acquired so far.
 
 ## Stock Market Simulator
+
 Will consider partial implementation of the project ideas that are being considered:
 
     Low-Latency Network Communication:
