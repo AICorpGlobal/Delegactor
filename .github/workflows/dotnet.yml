@@ -10,9 +10,11 @@ on:
     branches: [ "master" ]
 
 jobs:
-  build:
+  dotnet-build:
 
     runs-on: ubuntu-latest
+    env:
+      working-directory : ./src/csharp
 
     steps:
     - uses: actions/checkout@v3
@@ -22,7 +24,10 @@ jobs:
         dotnet-version: 6.0.x
     - name: Restore dependencies
       run: dotnet restore
+      working-directory: ${{env.working-directory}}
     - name: Build
       run: dotnet build --no-restore
+      working-directory: ${{env.working-directory}}
     - name: Test
       run: dotnet test --no-build --verbosity normal
+      working-directory: ${{env.working-directory}}
