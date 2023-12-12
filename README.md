@@ -4,13 +4,9 @@
 
 Still in beta/exporative development. [Read ActorFramework](./docs/ActorFramework.md) for a detailed understanding. 
 
-reduced/moved from castle_proxy based invokation to code generation for poxy client 
-- a bug was found, have to move out from castle proxy layer as its calls are blocking and that results in lower request rate
-- poc was done to use code generation to autogen proxy layer using interfaces, it seems promising. 
-
 This numbers are per cluster.
 
-(old numbers )
+- Castle Proxy (old numbers )
 ![image](https://github.com/AICorpGlobal/Delegactor/assets/8478849/ae5ec8bf-a441-4d3d-9c9d-36966b46735b)
 
 - new ones using code gen reaches RMQ headroom (10k-20k rps )
@@ -32,16 +28,20 @@ These numbers are without tuning, the Current RTT is 0.002
 
 
 
-NOTE: Tests are pending and is not not fit for product yet as I'm still doing exploration,
+NOTE: Tests are pending and is not not fit for production, take it with your own risk.
+There may be some breaking changes down the line yet as I'm still doing exploration,
 
 I'm planning to put a white paper for the same. Interested personals can reach out to me for collaboration.
 
 Further work include.
 
 * Http Proxy
-  - Http Interop like Dapr (in Go) target is a single proxy can easily handle 10k requests now. 
+  - Http Interop like Dapr (in Go) target is a single proxy can easily handle 10k requests now.
+    
 * Improve Healing
+
   - Have to Write TLA+ evaluation 
+
   - Improve Competing Agents/Consumer Pattern (the pattern that is being used here for cluster membership)
  
 * Not using lock / reduce locks usage [Disrupter](https://github.com/disruptor-net/Disruptor-net)
@@ -53,7 +53,7 @@ Further work include.
 * Seriliazation
   - Use GRPC/MessagePack
 
-* Porting to other languages
+* Porting or implementing adaptors in other languages
    - Golang
    - Rust
    - C++
