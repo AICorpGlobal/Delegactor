@@ -2,7 +2,7 @@
 
 [![.DotNet](https://github.com/AICorpGlobal/Delegactor/actions/workflows/dotnet.yml/badge.svg?branch=master)](https://github.com/AICorpGlobal/Delegactor/actions/workflows/dotnet.yml)
 
-Still in beta/exporative develpment. [Read ActorFramework](./docs/ActorFramework.md) for a detailed understanding. 
+Still in beta/exporative development. [Read ActorFramework](./docs/ActorFramework.md) for a detailed understanding. 
 
 reduced/moved from castle_proxy based invokation to code generation for poxy client 
 - a bug was found, have to move out from castle proxy layer as its calls are blocking and that results in lower request rate
