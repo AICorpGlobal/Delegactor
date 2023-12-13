@@ -12,6 +12,10 @@ This numbers are per cluster.
 - new ones using code gen reaches RMQ headroom (10k-20k rps )
  ![image](https://github.com/AICorpGlobal/Delegactor/assets/8478849/f655920a-9a7f-40aa-acff-8df6fb370b34)
 
+- a base line from the gold standard 
+
+![image](https://github.com/AICorpGlobal/Delegactor/assets/8478849/2d476050-a8e7-4d99-bedc-5fe44347869f)
+
 
 Won't be investing there(Performance) right now, instead will focus more on reliability and resilence
 
