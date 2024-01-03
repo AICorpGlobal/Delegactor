@@ -49,10 +49,11 @@ namespace Delegactor.Core
                     var response = await actorInstance.Key.InvokeMethod(request);
                     return response;
                 }
-                
-                if (request.Headers.TryGetValue("requestType", out var requestType) && requestType.ToString() == "notify")
+
+                if (request.Headers.TryGetValue("requestType", out var requestType) &&
+                    requestType.ToString() == "notify")
                 {
-                    var instances = await _actorNodeManager.GetAllActorInstances(request);
+                    var instances = await _actorNodeManager.GetAllActorInstancesOfAModule(request);
                     List<Task> tasks = new List<Task>();
                     foreach (var instance in instances)
                     {
@@ -60,8 +61,8 @@ namespace Delegactor.Core
                     }
 
                     await Task.WhenAll(tasks);
-
                 }
+
                 return new ActorResponse(request);
             }
             catch (Exception exception)
@@ -87,22 +88,31 @@ namespace Delegactor.Core
             await RunSetup();
 
             var step = 0;
-            while (!stoppingToken.IsCancellationRequested)
+            using PeriodicTimer timer = new(TimeSpan.FromSeconds(5));
             {
-                ++step;
-
-                await Task.Delay(_actorClusterInfo.HeartBeatWindowInSeconds * 1000, stoppingToken);
-
-                await HeartBeatUpdate();
-
-                if (step < 240)
+                try
                 {
-                    continue;
-                }
+                    while (await timer.WaitForNextTickAsync(stoppingToken))
+                    {
+                        ++step;
 
-                await _actorNodeManager.RunActorCleanUp();
-                step = 0;
+                        await HeartBeatUpdate();
+
+                        if (step < 240)
+                        {
+                            continue;
+                        }
+
+                        await _actorNodeManager.RunActorCleanUp();
+                        step = 0;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogInformation(" Hosted Service is stopping.");
+                }
             }
+            await _actorNodeManager.ShutDown();
         }
 
         private async Task HeartBeatUpdate()
@@ -110,8 +120,15 @@ namespace Delegactor.Core
             await _actorClusterManager.RefreshActorSystemClusterDetails();
             await _actorNodeManager.RefreshActorSystemNodeDetails();
             _actorNodeManager.TimeOutTasks();
-            _logger.LogInformation(" Heartbeat from {InstanceId} as  {NodeType} with  {NodeRole} {NodeState}  ",
-                _actorNodeInfo.InstanceId, _actorNodeInfo.NodeType, _actorNodeInfo.NodeRole, _actorNodeInfo.NodeState);
+            _logger.LogInformation(
+                " Heartbeat from {InstanceId} - {IpAddress}:{Port} as  {NodeType} with  {NodeRole}:{PartitionNumber} {NodeState}  ",
+                _actorNodeInfo.InstanceId,
+                _actorNodeInfo.IpAddress,
+                _actorNodeInfo.Port.ToString(),
+                _actorNodeInfo.NodeType,
+                _actorNodeInfo.NodeRole,
+                _actorNodeInfo.PartitionNumber.ToString(),
+                _actorNodeInfo.NodeState);
         }
     }
 }

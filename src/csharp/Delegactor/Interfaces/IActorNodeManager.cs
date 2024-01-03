@@ -14,6 +14,7 @@ namespace Delegactor.Interfaces
         void SetupEventHandler(Func<ActorRequest, Task<ActorResponse>> handleEvent);
         Task<ActorNodeInfo> RefreshActorClientNodeDetails();
         void TimeOutTasks();
-        Task<List<KeyValuePair<ActorBase, ActorStates>>> GetAllActorInstances(ActorRequest request);
+        Task<List<KeyValuePair<ActorBase, ActorStates>>> GetAllActorInstancesOfAModule(ActorRequest request);
+        Task ShutDown();
     }
 }

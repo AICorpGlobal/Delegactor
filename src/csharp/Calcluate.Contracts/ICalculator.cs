@@ -8,10 +8,11 @@ namespace Calcluate.Contracts
 {
     public interface ICalculator : IDelegactorProxy<ICalculator>
     {
-        [RemoteInvokableMethod(fromReplica: true)]
+        // [ConcurrentMethod]
+        [RemoteInvokableMethod(fromReplica: false)]
         public Task<int> Sum(int a, int b, ActorRequest? request = null);
 
-        [RemoteInvokableMethod(isBroadcastNotify:true)]
+        [RemoteInvokableMethod(isBroadcastNotify: true)]
         public Task Notify(int a, int b);
 
         [ConcurrentMethod]

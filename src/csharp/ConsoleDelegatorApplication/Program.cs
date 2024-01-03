@@ -2,22 +2,18 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
 using Calcluate.Contracts;
 using Delegactor.Core;
 using Delegactor.Injection;
-using Delegactor.Interfaces;
 using Delegactor.Models;
-using Delegactor.Storage;
-using Delegactor.Storage.MongoDb;
-using Delegactor.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
 
 namespace ConsoleDelegatorApplication // Note: actual namespace depends on the project name.
 {
@@ -25,9 +21,18 @@ namespace ConsoleDelegatorApplication // Note: actual namespace depends on the p
     {
         public static async Task Main(string[] args)
         {
+            var ephemeralPortStart = 39500;
+
+            var ephemeralPortEnd = 41500;
+
             var host = new HostBuilder()
                 .ConfigureServices(services =>
                 {
+                    var ipAddress = Dns.GetHostEntry(Dns.GetHostName()).AddressList
+                                        .FirstOrDefault(x => x.AddressFamily == AddressFamily.InterNetwork)
+                                        ?.ToString() ??
+                                    string.Empty;
+
                     services.AddClusterConfig(
                         new ActorNodeInfo
                         {
@@ -35,20 +40,27 @@ namespace ConsoleDelegatorApplication // Note: actual namespace depends on the p
                             ClusterName = Environment.MachineName,
                             InstanceId = Guid.NewGuid().ToString(),
                             PartitionNumber = null,
-                            LastUpdateTime = DateTime.UtcNow
+                            LastUpdateTime = DateTime.UtcNow,
+                            IpAddress = ipAddress,
+                            Port = -1
                         },
-                        new ActorClusterInfo()
+                        new ActorClusterInfo
                         {
                             ClusterName = Environment.MachineName,
-                            PartitionsNodes = 2,
-                            ReplicaNodes = 2,
+                            PartitionsNodes = 1,
+                            ReplicaNodes = 1,
                             HeartBeatWindowInSeconds = 5,
-                            LastUpdateTime = DateTime.UtcNow
+                            LastUpdateTime = DateTime.UtcNow,
+                            EphemeralPortStart = ephemeralPortStart,
+                            EphemeralPortEnd = ephemeralPortEnd
                         }
                     );
                     services.AddMongoDbDelegactorStorage("mongodb://localhost:27017/", "ActorSystemDb");
-                    services.AddDelegactorMessageBackPlane("amqp://guest:guest@rabbitmq.mq:5672");
-                    services.AddDelegactorSystemDependencies(new List<Assembly>() { typeof(ICalculator).Assembly ,typeof(Calculator).Assembly });
+                    services.AddDelegactorMessageBackPlane();
+                    services.AddDelegactorSystemDependencies(new List<Assembly>
+                    {
+                        typeof(ICalculator).Assembly, typeof(Calculator).Assembly
+                    });
                     // services.AddTransient<Calculator>();
                     services.AddTransient<ICalculator, Calculator>();
                     services.AddTransient<Calculator>();
@@ -56,7 +68,6 @@ namespace ConsoleDelegatorApplication // Note: actual namespace depends on the p
                         builder.AddConsole());
                 }).Build();
             await host.RunAsync();
-            
         }
     }
 }

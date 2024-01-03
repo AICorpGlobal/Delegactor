@@ -13,8 +13,4 @@
       <ProjectReference Include="..\DelegactorCodeGen\DelegactorCodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" ExcludeAssets="runtime" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Generated\DelegactorCodeGen\DelegactorCodeGen.ActorClientSourceGenerator" />
-    </ItemGroup>
-
 </Project>

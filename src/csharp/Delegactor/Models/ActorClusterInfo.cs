@@ -12,6 +12,9 @@ namespace Delegactor.Models
         public string Signature { get; set; }
         public int ReplicaNodes { get; set; }
 
+        public int EphemeralPortStart { get; set; }
+        public int EphemeralPortEnd { get; set; }
+
         public int ComputeKey(string argKey)
         {
             if (PartitionsNodes == 0)
@@ -29,6 +32,8 @@ namespace Delegactor.Models
             LastUpdateTime = clusterInfo.LastUpdateTime;
             Signature = clusterInfo.Signature;
             ReplicaNodes = clusterInfo.ReplicaNodes;
+            EphemeralPortStart = clusterInfo.EphemeralPortStart;
+            EphemeralPortEnd = clusterInfo.EphemeralPortEnd;
             return this;
         }
     }

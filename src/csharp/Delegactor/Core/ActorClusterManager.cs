@@ -43,6 +43,8 @@ namespace Delegactor.Core
                 _actorClusterInfo.PartitionsNodes = clusterInfo.PartitionsNodes;
                 _actorClusterInfo.ReplicaNodes = clusterInfo.ReplicaNodes;
                 _actorClusterInfo.Signature = clusterInfo.Signature;
+                _actorClusterInfo.EphemeralPortStart = clusterInfo.EphemeralPortStart;
+                _actorClusterInfo.EphemeralPortEnd = clusterInfo.EphemeralPortEnd;
                 // trigger repartitioning 
                 await _store.UpsertClusterInfo(_actorClusterInfo);
                 return _actorClusterInfo;

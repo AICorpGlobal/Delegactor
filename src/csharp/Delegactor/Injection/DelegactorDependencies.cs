@@ -11,6 +11,8 @@ using Delegactor.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Polly;
+using Polly.Retry;
 
 namespace Delegactor.Injection
 {
@@ -52,6 +54,7 @@ namespace Delegactor.Injection
             services.AddSingleton<IActorProxy, ActorProxy>();
             services.AddSingleton<IActorSystem, ActorSystem>();
             services.AddSingleton<IActorClusterManager, ActorClusterManager>();
+            services.AddSingleton(typeof(ITaskThrottler<>), typeof(TaskThrottler<>));
             services.AddSingleton<IActorNodeManager, ActorNodeManager>();
             services.AddHostedService<ActorSystem>();
             return services;
@@ -105,8 +108,7 @@ namespace Delegactor.Injection
                 var appServices = assembly.GetTypes()
                     .Where(x => x.IsInterface == false
                                 && x.GetInterfaces()
-                                    .Any(y => y.FullName
-                                        .StartsWith(typeof(IDelegactorProxy<>).FullName))).ToList();
+                                    .Any(y => string.IsNullOrEmpty(y.FullName)==false && y.FullName.StartsWith(typeof(IDelegactorProxy<>).FullName))).ToList();
 
                 foreach (var appService in appServices)
                 {
@@ -115,7 +117,8 @@ namespace Delegactor.Injection
                     if (interfaces == null || interfaces.Length == 0)
                         continue;
 
-                    var entries = interfaces.Where(x => x.FullName.StartsWith(typeof(IDelegactorProxy<>).FullName)).ToList();
+                    var entries = interfaces.Where(x => x.FullName.StartsWith(typeof(IDelegactorProxy<>).FullName))
+                        .ToList();
 
                     foreach (var entry in entries)
                     {
@@ -250,7 +253,7 @@ namespace Delegactor.Injection
         }
 
         public static IServiceCollection AddDelegactorMessageBackPlane(this IServiceCollection services,
-            string rabbitmqMqConnectionString)
+            string? rabbitmqMqConnectionString = null)
         {
             if (ClusterConfigAdded == false)
             {
@@ -258,20 +261,56 @@ namespace Delegactor.Injection
             }
 
             services.AddSingleton((ctx) =>
+            {
+                ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
+                    .AddRetry(new RetryStrategyOptions()
+                    {
+                        BackoffType = DelayBackoffType.Exponential,
+                        Delay = new TimeSpan(0,0,5)
+                    }) // Add retry using the default options
+                    .Build();
+                return pipeline;
+            });
+
+            services.AddSingleton((ctx) =>
                 new ConcurrentDictionary<string, KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>());
 
+            services.AddSingleton<IActorNodeResolver, ActorNodeResolver>();
 
-            services.AddSingleton<IActorSystemTransport, RabbitMqTransport>(ctx =>
+            if (string.IsNullOrEmpty(rabbitmqMqConnectionString))
+
             {
-                var rabbitMqTransport = new RabbitMqTransport(
-                    ctx.GetService<ConcurrentDictionary<string,
-                        KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>>(),
-                    ctx.GetService<ILogger<RabbitMqTransport>>(),
-                    ctx.GetService<ActorNodeInfo>(),
-                    ctx.GetService<ActorClusterInfo>(),
-                    new Dictionary<string, string> { { "connectionString", rabbitmqMqConnectionString } });
-                return rabbitMqTransport;
-            });
+                services.AddSingleton<IActorSystemTransport, DotNettyTransport>(ctx =>
+                {
+                    var dotNettyTransport = new DotNettyTransport(
+                        ctx.GetService<ConcurrentDictionary<string,
+                            KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>>(),
+                        ctx.GetService<ILogger<DotNettyTransport>>(),
+                        ctx.GetService<ITaskThrottler<DotNettyTransport>>(),
+                        ctx.GetService<ActorNodeInfo>(),
+                        ctx.GetService<ActorClusterInfo>(),
+                        ctx.GetService<IActorNodeResolver>(),
+                        ctx.GetService<ILogger<DotNettyTcpServerTransportHandler>>(),
+                        ctx.GetService<ILogger<DotNettyTcpClientTransportHandler>>());
+                    return dotNettyTransport;
+                });
+            }
+            else
+            {
+                services.AddSingleton<IActorSystemTransport, RabbitMqTransport>(ctx =>
+                {
+                    var rabbitMqTransport = new RabbitMqTransport(
+                        ctx.GetService<ConcurrentDictionary<string,
+                            KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>>(),
+                        ctx.GetService<ILogger<RabbitMqTransport>>(),
+                        ctx.GetService<ITaskThrottler<RabbitMqTransport>>(),
+                        ctx.GetService<ActorNodeInfo>(),
+                        ctx.GetService<ActorClusterInfo>(),
+                        new Dictionary<string, string> { { "connectionString", rabbitmqMqConnectionString } });
+                    return rabbitMqTransport;
+                });
+            }
+
             ClusterMessageBackPlaneAdded = true;
             return services;
         }

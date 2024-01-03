@@ -22,8 +22,11 @@ namespace Delegactor.Transport
             _callBackTasksSource;
 
         private readonly ILogger<RabbitMqTransport> _logger;
-        private string _actorRequestTopic;
-        private string _actorResponseTopic;
+
+        private readonly ITaskThrottler<RabbitMqTransport> _taskThrottler;
+
+        // private string _actorRequestTopic;
+        // private string _actorResponseTopic;
         private ConnectionFactory _factory;
         private bool _initCompleted;
         private ActorNodeInfo _nodeInfo;
@@ -36,17 +39,20 @@ namespace Delegactor.Transport
         private EventingBasicConsumer _responseConsumer;
         private string _responseQueueName;
         private IConnection _sendConnection;
+        private Func<ActorRequest, Task<ActorResponse>> _handleEvent;
 
         public RabbitMqTransport(
             ConcurrentDictionary<string, KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>
                 callBackTasksSource,
             ILogger<RabbitMqTransport> logger,
+            ITaskThrottler<RabbitMqTransport> taskThrottler,
             ActorNodeInfo nodeInfo,
             ActorClusterInfo clusterInfo,
             Dictionary<string, string> configuration)
         {
             _callBackTasksSource = callBackTasksSource;
             _logger = logger;
+            _taskThrottler = taskThrottler;
             _nodeInfo = nodeInfo;
             _clusterInfo = clusterInfo;
             _configuration = configuration;
@@ -63,31 +69,31 @@ namespace Delegactor.Transport
             _initCompleted = true;
             try
             {
-                _actorRequestTopic = $"actor_request_topic.{_nodeInfo.ClusterName}";
-                _actorResponseTopic = $"actor_response_topic.{_nodeInfo.ClusterName}";
+                // _actorRequestTopic = $"actor_request_topic_{_nodeInfo.ClusterName}";
+                // _actorResponseTopic = $"actor_response_topic_{_nodeInfo.ClusterName}";
 
                 var exclusive = _nodeInfo.NodeType == nameof(ActorClient);
 
                 var nodeInfoPartitionNumber = _nodeInfo.GetSubscriptionId(_clusterInfo);
 
                 _requestQueueName = _nodeInfo.NodeType == nameof(ActorSystem)
-                    ? $"request.{_nodeInfo.ClusterName}.{_nodeInfo.NodeType}.{nodeInfoPartitionNumber}.{_nodeInfo.NodeRole}"
-                    : $"request.{_nodeInfo.ClusterName}.{_nodeInfo.NodeType}.{_nodeInfo.InstanceId}.{_nodeInfo.NodeRole}";
+                    ? $"request_{_nodeInfo.ClusterName}_{_nodeInfo.NodeType}_{nodeInfoPartitionNumber}_{_nodeInfo.NodeRole}"
+                    : $"request_{_nodeInfo.ClusterName}_{_nodeInfo.NodeType}_{_nodeInfo.InstanceId}_{_nodeInfo.NodeRole}";
 
                 _requesterRoutingKey = _nodeInfo.NodeType == nameof(ActorSystem)
-                    ? $"request.{_nodeInfo.ClusterName}.{_nodeInfo.NodeType}.{nodeInfoPartitionNumber}.{_nodeInfo.NodeRole}"
-                    : $"request.{_nodeInfo.ClusterName}.{_nodeInfo.NodeType}.{_nodeInfo.InstanceId}.{_nodeInfo.NodeRole}";
+                    ? $"request_{_nodeInfo.ClusterName}_{_nodeInfo.NodeType}_{nodeInfoPartitionNumber}_{_nodeInfo.NodeRole}"
+                    : $"request_{_nodeInfo.ClusterName}_{_nodeInfo.NodeType}_{_nodeInfo.InstanceId}_{_nodeInfo.NodeRole}";
 
                 _responseQueueName = _nodeInfo.NodeType == nameof(ActorSystem)
-                    ? $"response.{_nodeInfo.ClusterName}.{_nodeInfo.NodeType}.{nodeInfoPartitionNumber}.{_nodeInfo.NodeRole}"
-                    : $"response.{_nodeInfo.ClusterName}.{_nodeInfo.NodeType}.{_nodeInfo.InstanceId}.{_nodeInfo.NodeRole}";
+                    ? $"response_{_nodeInfo.ClusterName}_{_nodeInfo.NodeType}_{nodeInfoPartitionNumber}_{_nodeInfo.NodeRole}"
+                    : $"response_{_nodeInfo.ClusterName}_{_nodeInfo.NodeType}_{_nodeInfo.InstanceId}_{_nodeInfo.NodeRole}";
 
                 _responderRoutingKey = _nodeInfo.NodeType == nameof(ActorSystem)
-                    ? $"response.{_nodeInfo.ClusterName}.{_nodeInfo.NodeType}.{nodeInfoPartitionNumber}.{_nodeInfo.NodeRole}"
-                    : $"response.{_nodeInfo.ClusterName}.{_nodeInfo.NodeType}.{_nodeInfo.InstanceId}.{_nodeInfo.NodeRole}";
+                    ? $"response_{_nodeInfo.ClusterName}_{_nodeInfo.NodeType}_{nodeInfoPartitionNumber}_{_nodeInfo.NodeRole}"
+                    : $"response_{_nodeInfo.ClusterName}_{_nodeInfo.NodeType}_{_nodeInfo.InstanceId}_{_nodeInfo.NodeRole}";
 
 
-                ushort eventsInParallel = 1; // move to configurations
+                ushort eventsInParallel = 128; // move to configurations
 
                 _factory = new ConnectionFactory { Uri = new Uri(_configuration["connectionString"]) };
 
@@ -105,19 +111,19 @@ namespace Delegactor.Transport
 
                 if (_nodeInfo.NodeType == nameof(ActorSystem))
                 {
-                    _requestChannel.ExchangeDeclare(_actorRequestTopic, ExchangeType.Topic);
+                    _requestChannel.ExchangeDeclare(_requestQueueName, ExchangeType.Direct);
                     _requestChannel.QueueDeclare(_requestQueueName, false, exclusive,
                         false);
-                    _requestChannel.QueueBind(_requestQueueName, _actorRequestTopic,
+                    _requestChannel.QueueBind(_requestQueueName, _requestQueueName,
                         _requesterRoutingKey);
                 }
 
 
-                _responseChannel.ExchangeDeclare(_actorResponseTopic, ExchangeType.Topic,
+                _responseChannel.ExchangeDeclare(_responseQueueName, ExchangeType.Direct,
                     autoDelete: false);
                 _responseChannel.QueueDeclare(_responseQueueName, false, exclusive,
                     false);
-                _responseChannel.QueueBind(_responseQueueName, _actorResponseTopic,
+                _responseChannel.QueueBind(_responseQueueName, _responseQueueName,
                     _responderRoutingKey);
 
 
@@ -136,7 +142,7 @@ namespace Delegactor.Transport
         public Task<ActorResponse> SendRequest(ActorRequest request, bool noWait)
         {
             var requestRoutingKey =
-                $"request.{_clusterInfo.ClusterName}.{nameof(ActorSystem)}.{_clusterInfo.ComputeKey(request.Uid)}.{request.PartitionType}";
+                $"request_{_clusterInfo.ClusterName}_{nameof(ActorSystem)}_{_clusterInfo.ComputeKey(request.Uid)}_{request.PartitionType}";
             try
             {
                 var prop = _requestChannel.CreateBasicProperties();
@@ -144,17 +150,17 @@ namespace Delegactor.Transport
                 request.Headers.TryAdd("listenerId", _responderRoutingKey);
                 request.Headers.TryAdd("CorrelationId", request.CorrelationId);
 
-
                 prop.CorrelationId = request.CorrelationId;
+                prop.Persistent = false;
 
                 var messageBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request));
 
-                lock (_requestChannel)
+                // lock (_requestChannel)
                 {
                     _logger.LogDebug("send request {CorrelationId} to {RequestRoutingKey}", request.CorrelationId,
                         requestRoutingKey);
 
-                    _requestChannel.BasicPublish(_actorRequestTopic,
+                    _requestChannel.BasicPublish(requestRoutingKey,
                         requestRoutingKey,
                         prop,
                         messageBytes);
@@ -193,16 +199,17 @@ namespace Delegactor.Transport
 
 
                 prop.CorrelationId = response.CorrelationId;
+                prop.Persistent = false;
 
                 var serialize = JsonSerializer.Serialize(response);
                 var messageBytes = Encoding.UTF8.GetBytes(serialize);
 
 
-                lock (_responseChannel)
+                // lock (_responseChannel)
                 {
                     _logger.LogDebug("send response {CorrelationId} to {RequestRoutingKey}", response.CorrelationId,
                         _responderRoutingKey);
-                    _responseChannel.BasicPublish(_actorResponseTopic,
+                    _responseChannel.BasicPublish(responseRoutingKey,
                         responseRoutingKey,
                         prop,
                         messageBytes);
@@ -247,37 +254,36 @@ namespace Delegactor.Transport
 
                 var messageBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request));
 
-                lock (_requestChannel)
+
+                for (int index = 0; index < _clusterInfo.PartitionsNodes; index++)
                 {
-                    for (int index = 0; index < _clusterInfo.PartitionsNodes; index++)
-                    {
-                        var requestRoutingKey =
-                            $"request.{_clusterInfo.ClusterName}.{nameof(ActorSystem)}.{index}.partition";
-                        _logger.LogDebug("send request {CorrelationId} to {RequestRoutingKey}", request.CorrelationId,
-                            requestRoutingKey);
+                    var requestRoutingKey =
+                        $"request_{_clusterInfo.ClusterName}_{nameof(ActorSystem)}_{index}_partition";
+                    _logger.LogDebug("send request {CorrelationId} to {RequestRoutingKey}", request.CorrelationId,
+                        requestRoutingKey);
 
-                        prop.CorrelationId = $"{Guid.NewGuid()}notify{request.CorrelationId}";
-                        _requestChannel.BasicPublish(_actorRequestTopic,
-                            requestRoutingKey,
-                            prop,
-                            messageBytes);
-                    }
-
-                    for (int index = 0; index < _clusterInfo.ReplicaNodes; index++)
-                    {
-                        var requestRoutingKey =
-                            $"request.{_clusterInfo.ClusterName}.{nameof(ActorSystem)}.{index}.replica";
-
-                        prop.CorrelationId = $"{Guid.NewGuid()}notify{request.CorrelationId}";
-                        _logger.LogDebug("send request {CorrelationId} to {RequestRoutingKey}", request.CorrelationId,
-                            requestRoutingKey);
-
-                        _requestChannel.BasicPublish(_actorRequestTopic,
-                            requestRoutingKey,
-                            prop,
-                            messageBytes);
-                    }
+                    prop.CorrelationId = $"{Guid.NewGuid()}notify{request.CorrelationId}";
+                    _requestChannel.BasicPublish(requestRoutingKey,
+                        requestRoutingKey,
+                        prop,
+                        messageBytes);
                 }
+
+                for (int index = 0; index < _clusterInfo.ReplicaNodes; index++)
+                {
+                    var requestRoutingKey =
+                        $"request_{_clusterInfo.ClusterName}_{nameof(ActorSystem)}_{index}_replica";
+
+                    prop.CorrelationId = $"{Guid.NewGuid()}notify{request.CorrelationId}";
+                    _logger.LogDebug("send request {CorrelationId} to {RequestRoutingKey}", request.CorrelationId,
+                        requestRoutingKey);
+
+                    _requestChannel.BasicPublish(requestRoutingKey,
+                        requestRoutingKey,
+                        prop,
+                        messageBytes);
+                }
+
 
                 return Task.FromResult(new ActorResponse(request));
             }
@@ -290,6 +296,7 @@ namespace Delegactor.Transport
 
         private void SetupConsumer(Func<ActorRequest, Task<ActorResponse>> handleEvent)
         {
+            _handleEvent = handleEvent;
             _responseConsumer = new EventingBasicConsumer(_responseChannel);
 
             if (_nodeInfo.NodeType == nameof(ActorSystem))
@@ -299,41 +306,32 @@ namespace Delegactor.Transport
                 {
                     var body = ea.Body.ToArray();
                     var message = Encoding.UTF8.GetString(body);
-                    if (ea.Exchange == _actorRequestTopic)
+
+                    var request = JsonSerializer.Deserialize<ActorRequest>(message);
+                    if (request == null)
                     {
-                        var request = JsonSerializer.Deserialize<ActorRequest>(message);
-                        if (request == null)
-                        {
-                            return;
-                        }
-
-                        _logger.LogDebug("got request {CorrelationId} to {RequestRoutingKey}",
-                            request.CorrelationId,
-                            request);
-
-                        var partitionKey = _clusterInfo.ComputeKey(request.Uid);
-                        if (request.IsNotityRequest == false &&
-                            partitionKey != _nodeInfo.GetSubscriptionId(_clusterInfo))
-                        {
-                            request.Partition = partitionKey;
-                            request.Headers.Remove(nameof(request.CorrelationId), out var correlationId);
-                            correlationId ??= Guid.NewGuid().ToString();
-                            request.Headers.TryAdd("origin-correlationId", correlationId.ToString());
-                            request.CorrelationId = Guid.NewGuid().ToString();
-                            await SendRequest(request, true);
-                            return;
-                        }
-
-                        var response = await handleEvent(request);
-
-                        _logger.LogDebug("handle completed request ");
-
-                        SendResponse(response);
+                        return;
                     }
-                    else
+
+                    _logger.LogDebug("got request {CorrelationId} to {RequestRoutingKey}",
+                        request.CorrelationId,
+                        request);
+
+                    var partitionKey = _clusterInfo.ComputeKey(request.Uid);
+                    if (request.IsNotityRequest == false &&
+                        partitionKey != _nodeInfo.GetSubscriptionId(_clusterInfo))
                     {
-                        _logger.LogInformation("ghost message for {Exchange}", ea.Exchange);
+                        var resp = new ActorResponse(request)
+                        {
+                            Response = new InvalidOperationException().Message,
+                            IsError = true,
+                            Error = "Request arrived at Invalid Partition"
+                        };
+                        SendResponse(resp);
+                        return;
                     }
+
+                    await HandleRequestMesssage(request);
                 };
                 _requestChannel.BasicConsume(_requestQueueName, true, _requestConsumer);
             }
@@ -342,35 +340,36 @@ namespace Delegactor.Transport
             {
                 var body = ea.Body.ToArray();
                 var message = Encoding.UTF8.GetString(body);
-                if (ea.Exchange == _actorResponseTopic)
-                {
-                    var response = JsonSerializer.Deserialize<ActorResponse>(message);
-                    var correlationId = response.Headers.ContainsKey("origin-correlationId")
-                        ? response.Headers["origin-correlationId"]
-                        : response.CorrelationId;
-                    if (!_callBackTasksSource.TryRemove(correlationId.ToString(), out var tcs))
-                    {
-                        _logger.LogInformation("ghost message for {Exchange} {CorrelationId}", ea.Exchange,
-                            ea.BasicProperties.CorrelationId);
-
-                        return;
-                    }
-
-                    if (response == null)
-                    {
-                        return;
-                    }
-
-                    tcs.Key.TrySetResult(response);
-                }
-                else
+                var response = JsonSerializer.Deserialize<ActorResponse>(message);
+                var correlationId = response.Headers.ContainsKey("origin-correlationId")
+                    ? response.Headers["origin-correlationId"]
+                    : response.CorrelationId;
+                if (!_callBackTasksSource.TryRemove(correlationId.ToString(), out var tcs))
                 {
                     _logger.LogInformation("ghost message for {Exchange} {CorrelationId}", ea.Exchange,
                         ea.BasicProperties.CorrelationId);
+
+                    return;
                 }
+
+                if (response == null)
+                {
+                    return;
+                }
+
+                tcs.Key.TrySetResult(response);
             };
 
             _responseChannel.BasicConsume(_responseQueueName, true, _responseConsumer);
+        }
+
+        private async Task HandleRequestMesssage(ActorRequest request)
+        {
+            await _taskThrottler.AddTaskAsync(async () =>
+            {
+                var resp = await _handleEvent(request);
+                SendResponse(resp);
+            });
         }
     }
 }

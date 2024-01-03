@@ -11,8 +11,6 @@ namespace Delegactor.Interfaces
         Task<ActorResponse> SendRequest(ActorRequest request,
             bool noWait);
 
-        void SendResponse(ActorResponse response);
-
         bool Shutdown();
         Task<ActorResponse> SendBroadCastNotify(ActorRequest request);
     }

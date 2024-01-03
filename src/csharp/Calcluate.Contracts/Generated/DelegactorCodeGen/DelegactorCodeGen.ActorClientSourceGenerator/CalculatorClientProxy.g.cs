@@ -9,6 +9,7 @@ using Delegactor.CodeGen;
 using Delegactor.Interfaces;
 using Delegactor.Models;
 using Microsoft.Extensions.Logging;
+using Polly;
  
 
             
@@ -33,13 +34,16 @@ namespace Calcluate.Contracts
         private string _actorId;
         private readonly ILogger<CalculatorClientProxy> _logger;
         private readonly IActorSystemTransport _transport;
+        private readonly ResiliencePipeline _resiliencePipeline;
         
         private string _module = "Calcluate.Contracts.ICalculator";
 
         public CalculatorClientProxy(
+            ResiliencePipeline resiliencePipeline,
             IActorSystemTransport transport,
             ILogger<CalculatorClientProxy> logger)
         {
+            _resiliencePipeline= resiliencePipeline;
             _transport = transport;
             _logger = logger;
         }
@@ -64,7 +68,7 @@ namespace Calcluate.Contracts
                 ActorId = _actorId,
                 Name = invokedMethodName,
                 Module = _module,
-                PartitionType = "replica"
+                PartitionType = "partition"
             };
 
             Dictionary<string, string> keyValuePairs = new Dictionary<string, string>();
@@ -92,8 +96,12 @@ namespace Calcluate.Contracts
  
 
 
-            ActorResponse resp = await _transport.SendRequest(__request, noWait);  
+           
+            ActorResponse resp=default;
             
+            await _resiliencePipeline.ExecuteAsync(async (ctx)=>{
+                resp = await _transport.SendRequest(__request, noWait);  
+            });
            
             if (resp.IsError)
             {
@@ -205,8 +213,12 @@ namespace Calcluate.Contracts
  
 
 
-            ActorResponse resp = await _transport.SendRequest(__request, noWait);  
+           
+            ActorResponse resp=default;
             
+            await _resiliencePipeline.ExecuteAsync(async (ctx)=>{
+                resp = await _transport.SendRequest(__request, noWait);  
+            });
            
             if (resp.IsError)
             {

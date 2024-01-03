@@ -15,10 +15,11 @@ namespace Delegactor.Core
         private readonly ConcurrentDictionary<string, KeyValuePair<ActorBase, ActorStates>> _actorCollection = new();
         private readonly ActorNodeInfo _actorNodeInfo;
         private readonly IActorServiceDiscovery _actorServiceDiscovery;
-        private readonly ActorClusterInfo _clusterInfo;
 
         private readonly ConcurrentDictionary<string, KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>
             _callBackTaskSource;
+
+        private readonly ActorClusterInfo _clusterInfo;
 
         private readonly ILogger<ActorNodeManager> _logger;
         private readonly IServiceProvider _provider;
@@ -70,46 +71,22 @@ namespace Delegactor.Core
             }
         }
 
-        public async Task<List<KeyValuePair<ActorBase, ActorStates>>> GetAllActorInstances(ActorRequest request)
+        public async Task<List<KeyValuePair<ActorBase, ActorStates>>> GetAllActorInstancesOfAModule(
+            ActorRequest request)
         {
-          var keys=  _actorCollection.Keys.Where(x => x.StartsWith(request.Module)).ToList();
-          var actors = _actorCollection.Where(x => keys.Contains(x.Key)).Select(x=>x.Value).ToList();
-          return actors;
+            var keys = _actorCollection.Keys.Where(x => x.StartsWith(request.Module)).ToList();
+            var actors = _actorCollection.Where(x => keys.Contains(x.Key)).Select(x => x.Value).ToList();
+            return actors;
         }
 
-        private async Task UnloadActors(List<string> keys)
+
+        public async Task ShutDown()
         {
-            var memberInfo = typeof(ActorBase).GetMethod(nameof(ActorBase.OnUnLoad));
-            var unLoadMethodName = memberInfo.GetParameters().First().Name;
-
-            var actorWindowExpiredEvent = new ActorRequest
+            _logger.LogInformation("Shutting system down");
+            _transport.Shutdown();
+            if (_actorCollection.IsEmpty == false)
             {
-                Name = nameof(ActorBase.OnUnLoad),
-                Parameters = new Dictionary<string, string> { { unLoadMethodName, "actor system" } }
-            };
-
-            var request = new ActorRequest
-            {
-                Name = nameof(ActorBase.OnUnLoad),
-                Parameters = new Dictionary<string, string>
-                {
-                    { unLoadMethodName, JsonSerializer.Serialize(actorWindowExpiredEvent) }
-                }
-            };
-
-            foreach (var key in keys)
-            {
-                if (!_actorCollection.TryGetValue(key, out var actorEntry))
-                {
-                    continue;
-                }
-
-                request.Module = actorEntry.Key.Module;
-                request.ActorId = actorEntry.Key.ActorId;
-                request.CorrelationId = Guid.NewGuid().ToString();
-                request.Partition = _actorNodeInfo.PartitionNumber.GetValueOrDefault();
-                request.PartitionType = _actorNodeInfo.NodeRole;
-                await _transport.SendRequest(request, true);
+                await UnloadActors(_actorCollection.Keys.ToList());
             }
         }
 
@@ -143,7 +120,6 @@ namespace Delegactor.Core
                 service.OnLoad(request).GetAwaiter().GetResult();
 
                 return new KeyValuePair<ActorBase, ActorStates>(service, ActorStates.Loaded);
-
             });
 
             _activationTimeStamps.AddOrUpdate(requestActorId,
@@ -220,6 +196,43 @@ namespace Delegactor.Core
         public void SetupEventHandler(Func<ActorRequest, Task<ActorResponse>> handleEvent)
         {
             _handleEvent = handleEvent;
+        }
+
+        private async Task UnloadActors(List<string> keys)
+        {
+            var memberInfo = typeof(ActorBase).GetMethod(nameof(ActorBase.OnUnLoad));
+            var unLoadMethodName = memberInfo.GetParameters().First().Name;
+
+            var actorWindowExpiredEvent = new ActorRequest
+            {
+                Name = nameof(ActorBase.OnUnLoad),
+                Parameters = new Dictionary<string, string> { { unLoadMethodName, "actor system" } }
+            };
+
+            var request = new ActorRequest
+            {
+                Name = nameof(ActorBase.OnUnLoad),
+                Parameters = new Dictionary<string, string>
+                {
+                    { unLoadMethodName, JsonSerializer.Serialize(actorWindowExpiredEvent) }
+                }
+            };
+
+            foreach (var key in keys)
+            {
+                if (!_actorCollection.TryGetValue(key, out var actorEntry))
+                {
+                    continue;
+                }
+
+                request.Module = actorEntry.Key.Module;
+                request.ActorId = actorEntry.Key.ActorId;
+                request.CorrelationId = Guid.NewGuid().ToString();
+                request.Partition = _actorNodeInfo.PartitionNumber.GetValueOrDefault();
+                request.PartitionType = _actorNodeInfo.NodeRole;
+                var instance = await GetActorInstance(request);
+                await instance.Key.OnUnLoad(request);
+            }
         }
 
         public List<string> GetIrrelevantActors()

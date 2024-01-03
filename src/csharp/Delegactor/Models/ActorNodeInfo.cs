@@ -16,6 +16,8 @@ namespace Delegactor.Models
             NodeType = actorNodeInfo.NodeType;
             Signature = actorNodeInfo.Signature;
             NodeState = actorNodeInfo.NodeState;
+            IpAddress = actorNodeInfo.IpAddress;
+            Port = actorNodeInfo.Port;
         }
 
         public ActorNodeInfo()
@@ -25,6 +27,8 @@ namespace Delegactor.Models
         public string NodeRole { get; set; }
 
         public string InstanceId { get; set; }
+        public string IpAddress { get; set; }
+        public int Port { get; set; }
         public int? PartitionNumber { get; set; }
         public string ClusterName { get; set; }
         public DateTime LastUpdateTime { get; set; }
@@ -43,6 +47,8 @@ namespace Delegactor.Models
             NodeType = actorNodeInfo.NodeType;
             NodeState = actorNodeInfo.NodeState;
             Signature = actorNodeInfo.Signature;
+            IpAddress = actorNodeInfo.IpAddress;
+            Port = actorNodeInfo.Port;
             return this;
         }
 

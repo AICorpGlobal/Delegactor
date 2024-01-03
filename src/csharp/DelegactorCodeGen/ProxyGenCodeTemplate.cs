@@ -24,6 +24,7 @@ using Delegactor.CodeGen;
 using Delegactor.Interfaces;
 using Delegactor.Models;
 using Microsoft.Extensions.Logging;
+using Polly;
  
 {{for entry in namespacenamecollection}}
             
@@ -38,13 +39,16 @@ namespace {{namespacename}}
         private string _actorId;
         private readonly ILogger<{{classname}}ClientProxy> _logger;
         private readonly IActorSystemTransport _transport;
+        private readonly ResiliencePipeline _resiliencePipeline;
         
         private string _module = "{{modulename}}";
 
         public {{classname}}ClientProxy(
+            ResiliencePipeline resiliencePipeline,
             IActorSystemTransport transport,
             ILogger<{{classname}}ClientProxy> logger)
         {
+            _resiliencePipeline= resiliencePipeline;
             _transport = transport;
             _logger = logger;
         }
@@ -97,8 +101,12 @@ namespace {{namespacename}}
             ActorResponse resp = await _transport.SendBroadCastNotify(__request);
 
 {{else}}
-            ActorResponse resp = await _transport.SendRequest(__request, noWait);  
+           
+            ActorResponse resp=default;
             
+            await _resiliencePipeline.ExecuteAsync(async (ctx)=>{
+                resp = await _transport.SendRequest(__request, noWait);  
+            });
            
             if (resp.IsError)
             {

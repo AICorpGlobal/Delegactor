@@ -214,6 +214,22 @@ namespace Delegactor.Storage.MongoDb
             return (partitionsCheckSum, replicasChecksum);
         }
 
+        public async Task<ActorNodeInfo?> GetNodeInfo(
+            ActorClusterInfo clusterInfo, int partitionNumber, string nodeRole)
+        {
+            var result = _nodeCollection
+                .Find(x =>
+                    x.Entry.ClusterName == clusterInfo.ClusterName
+                    && x.Entry.NodeType == nameof(ActorSystem)
+                    && x.Entry.PartitionNumber == partitionNumber
+                    && x.Entry.NodeRole == nodeRole
+                    && x.LastUpdateTime >= DateTime.UtcNow
+                        .Subtract(TimeSpan.FromSeconds(clusterInfo.HeartBeatWindowInSeconds * 3)))
+                .ToList().MaxBy(x => x.LastUpdateTime);
+
+            return result?.Entry;
+        }
+
         private async Task<ActorNodeInfo> GetPartitionSlot(ActorNodeInfo actorNodeInfo, ActorClusterInfo clusterInfo,
             List<MongoDocument<ActorNodeInfo>> partitions)
         {

@@ -14,5 +14,6 @@ namespace Delegactor.Interfaces
         Task<ActorNodeInfo> GetNodeSlotFromCluster(ActorNodeInfo actorNodeInfo, ActorClusterInfo clusterInfo);
 
         Task<(int? partitionsCheckSum, int? replicasChecksum)> GetCountNodes(ActorClusterInfo clusterInfo);
+        Task<ActorNodeInfo?> GetNodeInfo(ActorClusterInfo clusterInfo, int partitionNumber, string nodeRole);
     }
 }
