@@ -1,23 +1,19 @@
 # Delegactor ActorFramework (CSP)
+# In-house ActorFramework
 
-We have decided to build an actor like Framework that should be simple and easy to use and maintain. This is inspired from the following frame_works such as
+We have decided to build an inhouse actor ActorFramework that will be simple and easy to build and maintain for us. rather than depending on a general purpose heavy weight ActorFramework such as
 
 - Orleans
 - Akka
-- Service Fabric Actors
 - Proto Actor.
-
-we found that we often don't need a general purpose heavy weight ActorFramework on top of it we need to see for reliability and simplicity.
-
-NOTE: This work is part of a white paper that I'm drafting.
 
 ## Business requirement
 
-We need to be able to run concurrent transations and perform entity updates in a scalable and reliable manner.
+We need to be able to run concurrent transations and perform entity updates in a scalable manner.
 
-key areas that we can be used are
+key areas that we will be using this are
 
-- Keeping track of concurrent updates
+- Keeping track of order updates
 - Payment transations
 - Gps Feed updates and related data
 - Inventory counts
@@ -32,37 +28,37 @@ we have evaluated Orleans, ProtoActor ActorFrameworks
 
 - Orleans
 
-we had observed a huge Performance issue / latency (cold start of an actor takes approx 10 seconds) , even for simple cases it initial request take time. this is due the design requirements of a orleans to handle billion entities in a geo distirubute enviornment. second and biggest complexity was with startup time and evolution. Twice during its usage we had to completely re initialize our grain data as we tried to evolve our system.
+we had observed a huge Performance issue / latency, even for simple cases it initial request take time. this is due the design requirements of a orleans to handle billion entities in a geo distirubute enviornment. second and biggest complexity was with startup time and evolution. Twice during its usage we had to completely re initialize our grain data as we tried to evolve our system.
 
 - ProtoActor
 
 The simplest ActorFramework out there to start and work with.it is performant but we observed it had issues with multiple grains in the same cluster kind.
-also a plethora of issues that are open and will impact us. such as scaling beyond a few instances and outages and lose of requests/commands
+also a plethora of issues that are open and will impact us. such as scaling beyond a few instances and outages
 
 ## implementation
 
-- C# primary candidate language but at the same time by design we want to stay language neutral
+- C# primary candidate language but at the same time language neutral
 - Decoupled and componented by design
-- simple and reliable protocols should be used. 
-- focused on our business and technical requirements, than sheer performance numbers
+- simple and reliable protocol
+- focused on our business and technical requirements.
 
 ### design
 
 1. Decoupled persistance
 2. Decoupled Transport ActorFramework
 3. Should support the following
-    1. Notify (completed)
-    2. Request - Response (completed)
-    3. Pub - Sub (pending)
-4. Rpc should be message driven using a fast message back plane for addded reliability and should be using interoperable message formats
+    1. Notify
+    2. Request - Response
+    3. Pub - Sub
+4. Rpc should be message driven using interoperable message formats
 
 #### Persistance
 
-We will off load this to the developer with few components that will help them to achive their goals, even thoug we will have componenets built for them
+We will off load this to the developer with few components that will help them to achive their goals
 
 #### Transport
 
-For our use case we will use rabbitmq, will consider zero mq as our backbone later down the line.
+For our use case we will use zero mq as our backbone.
 
 #### Diagram
 
@@ -93,13 +89,15 @@ Tech Stack
 ```mermaid
 graph LR
 transport-layer -.-> rabbitmq
-transport-layer -.-> zeromq
-cluster_state -.-> redis
-cluster_state -.-> mongodb
+transport-layer -.-> DotNetty
+resolver -.-> redis
+resolver -.-> mongodb
 
 Persistance -.-> mongodb
 
 Language -.-> C#
+Language -.-> Go
+Language -.-> C++
 Language -.-> JavaScript
 
 ```
@@ -122,7 +120,7 @@ sequenceDiagram
 
     actor_node1-->>-actor_proxy: response form actor_1
     
-    actor_proxy->>-user: response    
+    actor_proxy->>-user: response 2   
     
 ```
 
@@ -156,16 +154,18 @@ sequenceDiagram
 
     actor_node2-->>-actor_proxy: response from actor_1
     
-    actor_proxy->>-user: response    
+    actor_proxy->>-user: response 1   
     
 ```
 
 ---
 
-### Detailed overview of our no master strategy 
+### Detailed overview of our no master strategy
+
 - instead using a database to sync cluster state and source of truth
-- we avoid gossiping too by this approach. 
+- we avoid gossiping too by this approach.
 - downside is that the database becomes the critical component
+
 ---
 
 Usually in most of the distributed system we can see there there is a concept of master and its election. Often it is the responsibility of master to resolve and maintain topology view and management of cluster.
@@ -177,7 +177,6 @@ As long as we are using a persistant messaging system for Rpc we will not have a
 We will have to find a way to improve the healing time without optin in for a gossip or broadcast protocols. this is something that will look into after we have implemented live re_partitoning & replicas
 
 we scope our engineering effort to node bound actor partitioning and replica. Given our current business strategy we should be comfortable with this design. **we can think about actor bound partitioning and distriburtion when the time hits.**
-
 
 ```mermaid
 
@@ -192,9 +191,11 @@ upsert_actors_types_info -->|mark as active| node_info_update_via_heart_beat
 
 ```
 
-
 sudo code for start up sequence
-    
+
+---
+
+```text
     Number of nodes: N
     Number of partitions : P
     Number of replicas : R
@@ -202,13 +203,31 @@ sudo code for start up sequence
     Number of online nodes : O
 
     conditions are 
-    A < O < N
-    P <= R
-    P>N
+    A < O <P <R < N
+    P <= R & R % P ==0
+```
 ---
 
-    pick_partition_role: 
+GetListenerId method for partitions and replicas
 
+```csharp
+    public int GetListenerId(ActorClusterInfo clusterInfo)
+    {  if (NodeType == nameof(ActorClient))
+            {
+                return 0;
+            }
+
+            var nodeBundle = NodeRole == "partition"
+                ? clusterInfo.PartitionsNodes
+                : clusterInfo.ReplicaNodes / clusterInfo.PartitionsNodes - 1;
+            return PartitionNumber!.Value % nodeBundle;
+    }
+```
+
+---
+
+```text
+    pick_partition_role:
     for i from 0-N in partition_role nodes
         find missing partition_role
         if found then atomically grab partition_role i
@@ -230,7 +249,7 @@ sudo code for start up sequence
     for time 1:N
         look out for open partition role 
         if found goto: pick_partition_role
-
+```
 
 ---
 
@@ -266,14 +285,14 @@ Read methods can be marked with an attibute so that the request event will have 
 
 eg:
 
-    Partition listen to     :  request_topic.partiton.1.*    
-    Replicas listen to      :  request_topic.partiton.1.reads
+    Partition listen to     :  request.JAZEEM-PC.ActorSystem.0.partition   
+    Replicas listen to      :  request.JAZEEM-PC.ActorSystem.0.replica (replicas are bounded)
 
 #### Scaling
 
 In our cluster each instance will be either a partition or a replica.
 
-Actor system have a control plan for cluster management, which is mostly a broadcast system and configuration updater. 
+Actor system have a control plan for cluster management, which is mostly a broadcast system and configuration updater.
 
 - we will stick to mathematical approachs is to reduce and avoid delays and election mechanisms which is otherwise required.
 
@@ -290,19 +309,41 @@ first it will update the clusters expected state.
     To find irrelevant actors and terminate recomputing hashes will help then  and will asking actors to self destruct.
 ---
     For clients when a partition encouters a message that is irrelevant, the message will be rerouted to respective partition with a header to indicate the client that there is cluster a configuration change.
-    the last partition will periodically cross check active message subscriptions and then will  
+    the last partition will periodically cross check active message subscriptions and then will  (to be done)
 
-#### State Persistance and propogation.
+#### State Persistance and propogation
 
-By design we have of loaded state management to the developer but will provide a simple key value store for handling state. we prefer to use simple storage for storing state as there is no theoretical limit to how many objects can be stored. 
+By design we have of loaded state management to the developer but will provide a simple key value store for handling state. we prefer to use simple storage for storing state as there is no theoretical limit to how many objects can be stored.
 
-we can use state propogation between partitions and nodes directly. 
-Haven't thought whether to usermq itself for state propogation or use a secondary channel to establish communication between parttition and replica. for now we will use replica to use storage to serve data.
+we can use state propogation between partitions and nodes directly.
+Haven't thought whether to use rmq itself for state propogation or use a secondary channel to establish communication between parttition and replica. for now we will use replica to use storage to serve data.
 
 #### Actor event propogation
 
 Actors can opt in for pub sub. where by one actor might be interested in actions or method invocation of other actors.
 
-pub sub can be by actors of the same type or actors of a different type. 
+pub sub can be by actors of the same type or actors of a different type.
 
 one down/design constrain is that we will only intimate actors that are alive. this is to avoid bringing in all the dormant actors online at the same time.
+
+
+#### MailBox Pattern
+
+Currently we don't have this in place. we are leveraging Rmq for event persistance. that helped us to proceed with our initial system.
+
+As a next step we need to unblock rabbitmq. this will have to be done using a mailbox pattern. this can in theory improve the Performance we have an aim to make it reliable
+
+```mermaid
+graph TD
+incoming-stream-->|listens with back pressure|circular-event-queue
+circular-event-queue-->|non blocking|async-sequential-writer
+async-sequential-writer-->store
+circular-event-queue-->dispatcher
+dispatcher-->|rate limited dispatching|actorInstance
+dispatcher-->|event processed|store
+```
+
+---
+Taking inspiration from this pattern **https://lmax-exchange.github.io/disruptor/disruptor.html**
+
+---
