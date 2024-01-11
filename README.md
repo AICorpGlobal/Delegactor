@@ -4,6 +4,9 @@
 
 Still in beta/exporative development. [Read ActorFramework](./docs/ActorFramework.md) for a detailed understanding. 
 
+> first round POC was usable in production 
+> Now we are Re-engineering for million events per second and addressing scalability and incorporating Kafka stream processing, and minio/ceph block storage
+
 This numbers are per cluster.
 
 - Castle Proxy (old numbers )
