@@ -1,4 +1,3 @@
-# Delegactor ActorFramework (CSP)
 # In-house ActorFramework
 
 We have decided to build an inhouse actor ActorFramework that will be simple and easy to build and maintain for us. rather than depending on a general purpose heavy weight ActorFramework such as
@@ -140,7 +139,7 @@ sequenceDiagram
     
     actor_proxy->>+actor_node1: write request for actor_1
     
-    actor_node1-->>actor_node2: actor state event from actor_1 using load
+    actor_node1-->>actor_node1_replica: actor state event from actor_1 using load
     
     actor_node1-->>-actor_proxy: response from actor_1
     
@@ -150,9 +149,9 @@ sequenceDiagram
 
     actor_proxy->>actor_proxy: compute replica  using hashing
    
-    actor_proxy->>+actor_node2: read request for actor_1
+    actor_proxy->>+actor_node1_replica: read request for actor_1
 
-    actor_node2-->>-actor_proxy: response from actor_1
+    actor_node1_replica-->>-actor_proxy: response from actor_1
     
     actor_proxy->>-user: response 1   
     
@@ -206,6 +205,7 @@ sudo code for start up sequence
     A < O <P <R < N
     P <= R & R % P ==0
 ```
+
 ---
 
 GetListenerId method for partitions and replicas
@@ -308,8 +308,10 @@ first it will update the clusters expected state.
     
     To find irrelevant actors and terminate recomputing hashes will help then  and will asking actors to self destruct.
 ---
-    For clients when a partition encouters a message that is irrelevant, the message will be rerouted to respective partition with a header to indicate the client that there is cluster a configuration change.
-    the last partition will periodically cross check active message subscriptions and then will  (to be done)
+
+For clients when a partition encouters a message that is irrelevant, the message will be rejected to indicate the client that there is cluster a configuration change.
+
+Scaling out we will have no outage , but when scaling down there can be timeouts or retries
 
 #### State Persistance and propogation
 
@@ -325,7 +327,6 @@ Actors can opt in for pub sub. where by one actor might be interested in actions
 pub sub can be by actors of the same type or actors of a different type.
 
 one down/design constrain is that we will only intimate actors that are alive. this is to avoid bringing in all the dormant actors online at the same time.
-
 
 #### MailBox Pattern
 
@@ -344,6 +345,13 @@ dispatcher-->|event processed|store
 ```
 
 ---
-Taking inspiration from this pattern **https://lmax-exchange.github.io/disruptor/disruptor.html**
+Taking inspiration from this pattern **<https://lmax-exchange.github.io/disruptor/disruptor.html>**
 
 ---
+
+---
+
+#### Direct Invocation
+
+There will be scenarios where one actor needs to invoke another one. in such cases we should avoid network calls and this can result in better preformance and lower latencies.
+
