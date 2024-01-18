@@ -5,7 +5,6 @@ using System.Reflection;
 using Delegactor.CodeGen;
 using Delegactor.Interfaces;
 using Delegactor.Models;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Delegactor.Core
@@ -60,7 +59,7 @@ namespace Delegactor.Core
                 foreach (var appService in appServices)
                 {
                     actorNodeDetail.ActorModuleName = appService.FullName;
-                    actorNodeDetail.ClusterName = nameof(ActorSystem);
+                    actorNodeDetail.ClusterName = nameof(ActorSystemService);
 
                     _discoveredAssemblies.AddOrUpdate(appService.FullName,
                         _ => appService.Assembly,
@@ -73,7 +72,9 @@ namespace Delegactor.Core
                         foreach (var item in interfaces)
                         {
                             if (item == typeof(IActorBase) || item == typeof(IDelegactorProxy<>))
+                            {
                                 continue;
+                            }
 
                             _discoveredAssemblies.AddOrUpdate(item.FullName, _ => item.Assembly,
                                 (_, _) => item.Assembly);
@@ -84,6 +85,5 @@ namespace Delegactor.Core
                 }
             }
         }
-
     }
 }

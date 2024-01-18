@@ -2,6 +2,7 @@
 
 using System.Reflection;
 using System.Text.Json;
+using Delegactor.Interfaces;
 using Delegactor.Models;
 
 namespace Delegactor.Core

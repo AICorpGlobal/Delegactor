@@ -1,6 +1,6 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
-namespace Delegactor.Core
+namespace Delegactor.Models
 {
     public enum ActorStates
     {

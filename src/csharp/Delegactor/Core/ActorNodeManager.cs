@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Delegactor.Interfaces;
 using Delegactor.Models;
+using Delegactor.Transport;
 using Microsoft.Extensions.Logging;
 
 namespace Delegactor.Core
@@ -25,7 +26,6 @@ namespace Delegactor.Core
         private readonly IServiceProvider _provider;
         private readonly IStorage _store;
         private readonly IActorSystemTransport _transport;
-        private Func<ActorRequest, Task<ActorResponse>> _handleEvent;
 
 
         public ActorNodeManager(
@@ -34,20 +34,20 @@ namespace Delegactor.Core
             ILogger<ActorNodeManager> logger,
             IActorServiceDiscovery actorServiceDiscovery,
             IServiceProvider provider,
-            IActorSystemTransport transport,
             IStorage store,
             ActorClusterInfo clusterInfo,
-            ActorNodeInfo nodeInfo)
+            ActorNodeInfo nodeInfo,
+            IActorSystemTransport transport)
         {
             _callBackTaskSource = callBackTaskSource ?? throw new ArgumentNullException(nameof(callBackTaskSource));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _actorServiceDiscovery =
                 actorServiceDiscovery ?? throw new ArgumentNullException(nameof(actorServiceDiscovery));
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-            _transport = transport ?? throw new ArgumentNullException(nameof(transport));
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _clusterInfo = clusterInfo ?? throw new ArgumentNullException(nameof(clusterInfo));
             _actorNodeInfo = nodeInfo ?? throw new ArgumentNullException(nameof(nodeInfo));
+            _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         }
 
         public async Task RunActorCleanUp()
@@ -83,11 +83,12 @@ namespace Delegactor.Core
         public async Task ShutDown()
         {
             _logger.LogInformation("Shutting system down");
-            _transport.Shutdown();
             if (_actorCollection.IsEmpty == false)
             {
                 await UnloadActors(_actorCollection.Keys.ToList());
             }
+
+            _transport.Shutdown();
         }
 
         public async Task<KeyValuePair<ActorBase, ActorStates>> GetActorInstance(ActorRequest request)
@@ -148,7 +149,7 @@ namespace Delegactor.Core
                 _transport.Shutdown();
                 if (_actorNodeInfo.NodeState == "operational")
                 {
-                    _transport.Init(_actorNodeInfo, _handleEvent);
+                    _transport.Init(_actorNodeInfo, HandleEvent);
                 }
             }
 
@@ -164,9 +165,9 @@ namespace Delegactor.Core
             if (nodeInfo.PartitionNumber == null
                 || _clusterInfo.ClusterState == "re-partitioning"
                 || (nodeInfo.PartitionNumber > _clusterInfo.PartitionsNodes
-                    && nodeInfo.NodeRole == "partition")
+                    && nodeInfo.NodeRole == ConstantKeys.PartitionKey)
                 || (nodeInfo.PartitionNumber > _clusterInfo.ReplicaNodes
-                    && nodeInfo.NodeRole == "replica"))
+                    && nodeInfo.NodeRole == ConstantKeys.ReplicaKey))
             {
                 await ReBuildNode();
             }
@@ -193,10 +194,50 @@ namespace Delegactor.Core
             return nodeInfo;
         }
 
-        public void SetupEventHandler(Func<ActorRequest, Task<ActorResponse>> handleEvent)
+        public async Task<ActorResponse> HandleEvent(ActorRequest request)
         {
-            _handleEvent = handleEvent;
+            //TODO: guard
+            try
+            {
+                if (!request.Headers.ContainsKey(ConstantKeys.RequestTypeKey))
+                {
+                    var actorInstance = await GetActorInstance(request);
+
+                    var response = await actorInstance.Key.InvokeMethod(request);
+                    return response;
+                }
+
+                if (request.Headers.TryGetValue(ConstantKeys.RequestTypeKey, out var requestType) &&
+                    requestType.ToString() == ConstantKeys.RequestTypeNotifyKey)
+                {
+                    var instances = await GetAllActorInstancesOfAModule(request);
+
+                    Parallel.ForEach(instances, async instance =>
+                    {
+                        await instance.Key.InvokeMethod(request).ConfigureAwait(false);
+                    });
+                }
+
+                return new ActorResponse(request);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(" {Error}", exception.Message);
+                return new ActorResponse(new ActorRequest(), error: exception.Message);
+            }
         }
+
+        public async Task Start()
+        {
+            _logger.LogInformation("Shutting system down");
+            if (_actorCollection.IsEmpty == false)
+            {
+                await UnloadActors(_actorCollection.Keys.ToList());
+            }
+
+            _transport.Shutdown();
+        }
+
 
         private async Task UnloadActors(List<string> keys)
         {
@@ -250,7 +291,7 @@ namespace Delegactor.Core
 
             expiredActors = _actorCollection
                 .Where(x => _actorNodeInfo.PartitionNumber ==
-                            _clusterInfo.ComputeKey(x.Key))
+                            NodeManagerUtils.ComputePartitionNumber(_clusterInfo, _actorNodeInfo.NodeRole, x.Key))
                 .Select(x => x.Key).Union(expiredActors).ToList();
             return expiredActors;
         }

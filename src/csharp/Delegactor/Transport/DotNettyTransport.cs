@@ -3,13 +3,10 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.NetworkInformation;
-using System.Text;
-using System.Text.Json;
 using Delegactor.Core;
 using Delegactor.Interfaces;
 using Delegactor.Models;
 using DotNetty.Codecs;
-using DotNetty.Codecs.Json;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -21,31 +18,30 @@ namespace Delegactor.Transport
 {
     public class DotNettyTransport : IActorSystemTransport
     {
-        private readonly IActorNodeResolver _resolver;
-        private readonly ActorClusterInfo _clusterInfo;
-
-        private readonly ILogger<DotNettyTransport> _logger;
-        private readonly ILogger<DotNettyTcpServerTransportHandler> _childLogger;
-
-        private readonly ITaskThrottler<DotNettyTransport> _taskThrottler;
-
         private readonly ConcurrentDictionary<string, KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>
             _callBackTasksSource;
 
         private readonly ConcurrentDictionary<string, IChannel> _channels = new();
+        private readonly ILogger<DotNettyTcpClientTransportHandler> _childForClientLogger;
+        private readonly ILogger<DotNettyTcpServerTransportHandler> _childLogger;
+        private readonly ActorClusterInfo _clusterInfo;
+
+        private readonly ILogger<DotNettyTransport> _logger;
+        private readonly ResiliencePipeline _resiliencePipeline;
+        private readonly IActorNodeResolver _resolver;
+
+        private readonly ITaskThrottler<DotNettyTransport> _taskThrottler;
+        private ServerBootstrap _bootstrap;
+        private Bootstrap _bootstrapForClientListeners;
+        private MultithreadEventLoopGroup _bossGroup;
+        private Func<ActorRequest, Task<ActorResponse>> _handleEvent;
 
 
         private bool _initCompleted;
-        private ActorNodeInfo _nodeInfo;
-        private Func<ActorRequest, Task<ActorResponse>> _handleEvent;
-        private MultithreadEventLoopGroup _bossGroup;
-        private MultithreadEventLoopGroup _workerGroup;
         private MultithreadEventLoopGroup _listenerEventLoopGroup;
-        private ServerBootstrap _bootstrap;
+        private ActorNodeInfo _nodeInfo;
         private IChannel _serverChannel;
-        private Bootstrap _bootstrapForClientListeners;
-        private ILogger<DotNettyTcpClientTransportHandler> _childForClientLogger;
-        private readonly ResiliencePipeline _resiliencePipeline;
+        private MultithreadEventLoopGroup _workerGroup;
 
 
         public DotNettyTransport(
@@ -59,18 +55,22 @@ namespace Delegactor.Transport
             ILogger<DotNettyTcpServerTransportHandler> childLogger,
             ILogger<DotNettyTcpClientTransportHandler> childForClientLogger)
         {
-            _resolver = resolver;
-            _clusterInfo = clusterInfo;
-            _logger = logger;
-            _childLogger = childLogger;
-            _taskThrottler = taskThrottler;
-            _nodeInfo = nodeInfo;
-            _callBackTasksSource = callBackTasksSource;
-            _childForClientLogger = childForClientLogger;
+            _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+            _clusterInfo = clusterInfo ?? throw new ArgumentNullException(nameof(clusterInfo));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _childLogger = childLogger ?? throw new ArgumentNullException(nameof(childLogger));
+            _taskThrottler = taskThrottler ?? throw new ArgumentNullException(nameof(taskThrottler));
+            _nodeInfo = nodeInfo ?? throw new ArgumentNullException(nameof(nodeInfo));
+            _callBackTasksSource = callBackTasksSource ?? throw new ArgumentNullException(nameof(callBackTasksSource));
+            _childForClientLogger =
+                childForClientLogger ?? throw new ArgumentNullException(nameof(childForClientLogger));
             _resiliencePipeline = new ResiliencePipelineBuilder()
-                .AddRetry(new RetryStrategyOptions()
+                .AddRetry(new RetryStrategyOptions
                 {
-                    BackoffType = DelayBackoffType.Exponential, Delay = new TimeSpan(0, 0, 2), MaxRetryAttempts = 5
+                    BackoffType = DelayBackoffType.Exponential,
+                    Delay = new TimeSpan(0, 0, 1),
+                    MaxRetryAttempts = 50,
+                    UseJitter = true
                 }) // Add retry using the default options
                 .Build();
         }
@@ -86,97 +86,82 @@ namespace Delegactor.Transport
 
 
             _initCompleted = true;
-            int port = GetEphemeralPort();
-            if (port == -1)
+            _resiliencePipeline.Execute(_ =>
             {
-                throw new NotSupportedException("Unable to find a  port, cannot start now");
-            }
+                var port = GetEphemeralPort();
 
-            try
-            {
-                if (_nodeInfo.NodeType == nameof(ActorSystem))
+                try
                 {
-                    _bossGroup = new MultithreadEventLoopGroup();
-                    _workerGroup = new MultithreadEventLoopGroup();
-                    _bootstrap = new ServerBootstrap()
-                        .Group(_bossGroup, _workerGroup)
-                        .Channel<TcpServerSocketChannel>()
-                        .Option(ChannelOption.SoBacklog, 1000)
-                        .ChildHandler(new ActionChannelInitializer<IChannel>(channel =>
+                    if (port == -1)
+                    {
+                        throw new NotSupportedException("Unable to find a  port, cannot start now");
+                    }
+
+                    if (_nodeInfo.NodeType == nameof(ActorSystemService))
+                    {
+                        _bossGroup = new MultithreadEventLoopGroup();
+                        _workerGroup = new MultithreadEventLoopGroup();
+                        _bootstrap = new ServerBootstrap()
+                            .Group(_bossGroup, _workerGroup)
+                            .Channel<TcpServerSocketChannel>()
+                            .Option(ChannelOption.SoBacklog, 1000)
+                            .ChildHandler(new ActionChannelInitializer<IChannel>(channel =>
+                            {
+                                var pipeline = channel.Pipeline;
+                                pipeline.AddLast(new DelimiterBasedFrameDecoder(16384, Delimiters.LineDelimiter()));
+
+                                var dotNettyTcpServerTransportHandler = new DotNettyTcpServerTransportHandler(
+                                    handleEvent,
+                                    _childLogger,
+                                    _clusterInfo, _nodeInfo,
+                                    _taskThrottler);
+                                pipeline.AddLast(dotNettyTcpServerTransportHandler);
+                            }));
+
+                        _nodeInfo.Port = port;
+                        _serverChannel = _bootstrap.BindAsync(new IPEndPoint(IPAddress.Any, port)).Result;
+                    }
+
+                    _listenerEventLoopGroup = new MultithreadEventLoopGroup();
+                    _bootstrapForClientListeners = new Bootstrap()
+                        .Group(_listenerEventLoopGroup)
+                        .Channel<TcpSocketChannel>()
+                        .Option(ChannelOption.TcpNodelay, true)
+                        .Handler(new ActionChannelInitializer<IChannel>(channel =>
                         {
                             var pipeline = channel.Pipeline;
                             pipeline.AddLast(new DelimiterBasedFrameDecoder(16384, Delimiters.LineDelimiter()));
-                            pipeline.AddLast(new JsonObjectDecoder());
 
-                            var dotNettyTcpServerTransportHandler = new DotNettyTcpServerTransportHandler(
-                                handleEvent,
-                                _childLogger,
-                                _clusterInfo, _nodeInfo,
-                                _taskThrottler);
-                            pipeline.AddLast(dotNettyTcpServerTransportHandler);
+                            var dotNettyTcpClientTransportHandler = new DotNettyTcpClientTransportHandler(
+                                _callBackTasksSource,
+                                _childForClientLogger);
+
+                            pipeline.AddLast(dotNettyTcpClientTransportHandler);
                         }));
-
-                    _nodeInfo.Port = port;
-                    _serverChannel = _bootstrap.BindAsync(new IPEndPoint(IPAddress.Any, port)).Result;
                 }
-
-                _listenerEventLoopGroup = new MultithreadEventLoopGroup();
-                _bootstrapForClientListeners = new Bootstrap()
-                    .Group(_listenerEventLoopGroup)
-                    .Channel<TcpSocketChannel>()
-                    .Option(ChannelOption.TcpNodelay, true)
-                    .Handler(new ActionChannelInitializer<IChannel>(channel =>
-                    {
-                        var pipeline = channel.Pipeline;
-                        pipeline.AddLast(new DelimiterBasedFrameDecoder(16384, Delimiters.LineDelimiter()));
-                        pipeline.AddLast(new JsonObjectDecoder());
-
-                        var dotNettyTcpClientTransportHandler = new DotNettyTcpClientTransportHandler(
-                            _callBackTasksSource,
-                            _childForClientLogger,
-                            _clusterInfo,
-                            _nodeInfo);
-
-                        pipeline.AddLast(dotNettyTcpClientTransportHandler);
-                    }));
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError("{Error}", exception.Message);
-                _initCompleted = false;
-            }
+                catch (Exception exception)
+                {
+                    _logger.LogError("{Port} {Error}", port, exception.Message);
+                    _initCompleted = false;
+                    throw;
+                }
+            });
 
 
             return _initCompleted;
         }
 
-        private int GetEphemeralPort()
-        {
-            IPGlobalProperties ipGlobalProperties = IPGlobalProperties.GetIPGlobalProperties();
-            TcpConnectionInformation[] tcpConnInfoArray = ipGlobalProperties.GetActiveTcpConnections();
-
-            for (int i = _clusterInfo.EphemeralPortStart; i < _clusterInfo.EphemeralPortEnd; i++)
-            {
-                if (tcpConnInfoArray.Any(x => x.LocalEndPoint.Port != i))
-                {
-                    return i;
-                }
-            }
-
-            return -1;
-        }
-
 
         public Task<ActorResponse> SendRequest(ActorRequest request, bool noWait)
         {
-            request.Headers.TryAdd("CorrelationId", request.CorrelationId);
-            bool reload = false;
-            // _resiliencePipeline.Execute(async _ =>
-            // {
-            var channel = GetChannel(request, reload);
-            // reload = true;
-            channel.WriteAndFlushAsync(DotNettyUtils.Serialize(request));
-            // }
+            request.Headers.TryAdd(ConstantKeys.CorrelationIdKey, request.CorrelationId);
+            var reload = false;
+            _resiliencePipeline.Execute(async _ =>
+            {
+                var channel = GetChannel(request, reload);
+                reload = true;
+                await channel.WriteAndFlushAsync(SerializationUtils.SerializeToIByteBuffer(request));
+            });
 
             var tcs = new TaskCompletionSource<ActorResponse>();
 
@@ -184,35 +169,6 @@ namespace Delegactor.Transport
                 new KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>(tcs, DateTime.Now));
 
             return tcs.Task;
-        }
-
-        private IChannel GetChannel(ActorRequest request, bool reload = false)
-        {
-            var key = $"{request.PartitionType}{request.Partition}";
-
-            if (reload)
-            {
-                _channels.TryRemove(key, out var _);
-            }
-
-            var iChannel = _channels.GetOrAdd(key, _ =>
-            {
-                //https://github.com/caozhiyuan/DotNetty/blob/dev/src/DotNetty.Rpc/Client/NettyClient.cs
-                var endPoint = _resolver.GetIpAddress(request.Partition, request.PartitionType).Result;
-                //var endPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 39500);
-                try
-                {
-                    var channel = _bootstrapForClientListeners.ConnectAsync(endPoint).Result;
-                    return channel;
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
-                    throw;
-                }
-            });
-
-            return iChannel;
         }
 
         public bool Shutdown()
@@ -240,24 +196,73 @@ namespace Delegactor.Transport
 
         public async Task<ActorResponse> SendBroadCastNotify(ActorRequest request)
         {
-            request.Headers.TryAdd("CorrelationId", request.CorrelationId);
-            request.Headers.TryAdd("requestType", "notify");
+            request.Headers.TryAdd(ConstantKeys.CorrelationIdKey, request.CorrelationId);
+            request.Headers.TryAdd(ConstantKeys.RequestTypeKey, ConstantKeys.RequestTypeNotifyKey);
 
-            for (int index = 0; index < _clusterInfo.PartitionsNodes; index++)
+            for (var index = 0; index < _clusterInfo.PartitionsNodes; index++)
             {
                 request.Partition = index;
-                request.PartitionType = "partition";
+                request.PartitionType = ConstantKeys.PartitionKey;
                 await SendRequest(request, true);
             }
 
-            for (int index = 0; index < _clusterInfo.ReplicaNodes; index++)
+            for (var index = 0; index < _clusterInfo.ReplicaNodes; index++)
             {
                 request.Partition = index;
-                request.PartitionType = "replica";
+                request.PartitionType = ConstantKeys.ReplicaKey;
                 await SendRequest(request, true);
             }
 
             return new ActorResponse(request);
+        }
+
+        private int GetEphemeralPort()
+        {
+            var ipGlobalProperties = IPGlobalProperties.GetIPGlobalProperties();
+            var tcpConnInfoArray = ipGlobalProperties.GetActiveTcpListeners();
+
+            for (var i = _clusterInfo.EphemeralPortStart; i < _clusterInfo.EphemeralPortEnd; i++)
+            {
+                if (tcpConnInfoArray.Any(x => x.Port == i))
+                {
+                    continue;
+                }
+
+                return i;
+            }
+
+            return -1;
+        }
+
+        private IChannel GetChannel(ActorRequest request, bool reload = false)
+        {
+            var requestPartition =
+                NodeManagerUtils.ComputePartitionNumber(_clusterInfo, request.PartitionType, request.Uid);
+
+            var key = $"{request.PartitionType}{requestPartition}";
+
+            if (reload)
+            {
+                _channels.TryRemove(key, out var _);
+            }
+
+            var iChannel = _channels.GetOrAdd(key, _ =>
+            {
+                //https://github.com/caozhiyuan/DotNetty/blob/dev/src/DotNetty.Rpc/Client/NettyClient.cs
+                var endPoint = _resolver.GetIpAddress(requestPartition, request.PartitionType).Result;
+                try
+                {
+                    var channel = _bootstrapForClientListeners.ConnectAsync(endPoint).Result;
+                    return channel;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    throw;
+                }
+            });
+
+            return iChannel;
         }
     }
 }

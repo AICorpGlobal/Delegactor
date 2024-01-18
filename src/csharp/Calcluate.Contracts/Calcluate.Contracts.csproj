@@ -1,16 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>   
-      <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles> 
-      <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
-      <TargetFramework>net7.0</TargetFramework>
+  <PropertyGroup>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
+    <TargetFramework>net7.0</TargetFramework>
 
-    </PropertyGroup>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\DelegactorCodeGen\DelegactorCodeGen.csproj" />
-      <ProjectReference Include="..\Delegactor\Delegactor.csproj" />
-      <ProjectReference Include="..\DelegactorCodeGen\DelegactorCodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" ExcludeAssets="runtime" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DelegactorCodeGen\DelegactorCodeGen.csproj" />
+    <ProjectReference Include="..\Delegactor\Delegactor.csproj" />
+    <ProjectReference Include="..\DelegactorCodeGen\DelegactorCodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Generated\" />
+  </ItemGroup>
 
 </Project>

@@ -1,7 +1,6 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
-using System.Collections;
-using System.Collections.Concurrent;
+using Delegactor.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Delegactor.Core
@@ -13,7 +12,7 @@ namespace Delegactor.Core
 
         public TaskThrottler(ILogger<TaskThrottler<TGroupType>> logger)
         {
-            _logger = logger;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _semControl = new Semaphore(MaxSize, MaxSize * 4 * 100);
         }
 

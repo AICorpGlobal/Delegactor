@@ -52,11 +52,11 @@ namespace Delegactor.Injection
                     });
             });
             services.AddSingleton<IActorProxy, ActorProxy>();
-            services.AddSingleton<IActorSystem, ActorSystem>();
+            services.AddSingleton<IActorSystem, ActorSystemService>();
             services.AddSingleton<IActorClusterManager, ActorClusterManager>();
             services.AddSingleton(typeof(ITaskThrottler<>), typeof(TaskThrottler<>));
             services.AddSingleton<IActorNodeManager, ActorNodeManager>();
-            services.AddHostedService<ActorSystem>();
+            services.AddHostedService<ActorSystemService>();
             return services;
         }
 
@@ -91,31 +91,34 @@ namespace Delegactor.Injection
             });
 
             services.AddSingleton<IActorProxy, ActorProxy>();
-            services.AddSingleton<IActorClient, ActorClient>();
+            services.AddSingleton<IActorClient, ActorClientService>();
             services.AddSingleton(typeof(ITaskThrottler<>), typeof(TaskThrottler<>));
             services.AddSingleton<IActorClusterManager, ActorClusterManager>();
             services.AddSingleton<IActorNodeManager, ActorNodeManager>();
             services.LoadProxyClients(assemblies);
-            services.AddHostedService<ActorClient>();
+            services.AddHostedService<ActorClientService>();
             return services;
         }
 
         public static IServiceCollection LoadProxyClients(this IServiceCollection serviceCollection,
             List<Assembly> assemblyList)
         {
-            foreach (Assembly assembly in assemblyList)
+            foreach (var assembly in assemblyList)
             {
                 var appServices = assembly.GetTypes()
                     .Where(x => x.IsInterface == false
                                 && x.GetInterfaces()
-                                    .Any(y => string.IsNullOrEmpty(y.FullName)==false && y.FullName.StartsWith(typeof(IDelegactorProxy<>).FullName))).ToList();
+                                    .Any(y => string.IsNullOrEmpty(y.FullName) == false &&
+                                              y.FullName.StartsWith(typeof(IDelegactorProxy<>).FullName))).ToList();
 
                 foreach (var appService in appServices)
                 {
                     var interfaces = appService.GetInterfaces();
 
                     if (interfaces == null || interfaces.Length == 0)
+                    {
                         continue;
+                    }
 
                     var entries = interfaces.Where(x => x.FullName.StartsWith(typeof(IDelegactorProxy<>).FullName))
                         .ToList();
@@ -161,11 +164,11 @@ namespace Delegactor.Injection
             {
                 var client = ctx.GetService<IMongoClient>();
                 var db = client.GetDatabase(actorSystemDbName,
-                    new MongoDatabaseSettings()
+                    new MongoDatabaseSettings
                     {
                         ReadPreference = ReadPreference.PrimaryPreferred,
                         ReadConcern = ReadConcern.Majority,
-                        WriteConcern = WriteConcern.WMajority,
+                        WriteConcern = WriteConcern.WMajority
                     });
 
 
@@ -260,19 +263,18 @@ namespace Delegactor.Injection
                 throw new InvalidOperationException("missing Cluster Config");
             }
 
-            services.AddSingleton((ctx) =>
+            services.AddSingleton(ctx =>
             {
-                ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
-                    .AddRetry(new RetryStrategyOptions()
+                var pipeline = new ResiliencePipelineBuilder()
+                    .AddRetry(new RetryStrategyOptions
                     {
-                        BackoffType = DelayBackoffType.Exponential,
-                        Delay = new TimeSpan(0,0,5)
+                        BackoffType = DelayBackoffType.Exponential, Delay = new TimeSpan(0, 0, 5)
                     }) // Add retry using the default options
                     .Build();
                 return pipeline;
             });
 
-            services.AddSingleton((ctx) =>
+            services.AddSingleton(ctx =>
                 new ConcurrentDictionary<string, KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>());
 
             services.AddSingleton<IActorNodeResolver, ActorNodeResolver>();
@@ -306,7 +308,10 @@ namespace Delegactor.Injection
                         ctx.GetService<ITaskThrottler<RabbitMqTransport>>(),
                         ctx.GetService<ActorNodeInfo>(),
                         ctx.GetService<ActorClusterInfo>(),
-                        new Dictionary<string, string> { { "connectionString", rabbitmqMqConnectionString } });
+                        new Dictionary<string, string>
+                        {
+                            { ConstantKeys.ConnectionStringKey, rabbitmqMqConnectionString }
+                        });
                     return rabbitMqTransport;
                 });
             }

@@ -1,6 +1,6 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
-namespace Delegactor.Core
+namespace Delegactor.Interfaces
 {
     public interface ITaskThrottler<TGroupType> where TGroupType : class
     {

@@ -2,83 +2,46 @@
 
 using Delegactor.Interfaces;
 using Delegactor.Models;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Exception = System.Exception;
 
 namespace Delegactor.Core
 {
-    public class ActorSystem : BackgroundService, IActorSystem
+    public class ActorSystemService : BackgroundService, IActorSystem
     {
         private readonly ActorClusterInfo _actorClusterInfo;
         private readonly IActorClusterManager _actorClusterManager;
         private readonly ActorNodeInfo _actorNodeInfo;
         private readonly IActorNodeManager _actorNodeManager;
         private readonly IActorServiceDiscovery _actorServiceDiscovery;
-        private readonly ILogger<ActorSystem> _logger;
+        private readonly ILogger<ActorSystemService> _logger;
         private readonly IServiceProvider _provider;
 
 
-        public ActorSystem(
+        public ActorSystemService(
             ActorClusterInfo actorClusterInfo,
             ActorNodeInfo actorNodeInfo,
-            ILogger<ActorSystem> logger,
+            ILogger<ActorSystemService> logger,
             IActorClusterManager actorClusterManager,
             IActorNodeManager actorNodeManager,
             IServiceProvider provider,
             IActorServiceDiscovery actorServiceDiscovery)
         {
-            _actorClusterInfo = actorClusterInfo;
-            _actorNodeInfo = actorNodeInfo;
+            _actorClusterInfo = actorClusterInfo ?? throw new ArgumentNullException(nameof(actorClusterInfo));
+            _actorNodeInfo = actorNodeInfo ?? throw new ArgumentNullException(nameof(actorNodeInfo));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _actorClusterManager = actorClusterManager ?? throw new ArgumentNullException(nameof(actorClusterManager));
             _actorNodeManager = actorNodeManager ?? throw new ArgumentNullException(nameof(actorNodeManager));
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-            _actorServiceDiscovery = actorServiceDiscovery;
-        }
-
-        public async Task<ActorResponse> HandleEvent(ActorRequest request)
-        {
-            try
-            {
-                if (!request.Headers.ContainsKey("requestType"))
-                {
-                    var actorInstance = await _actorNodeManager.GetActorInstance(request);
-
-                    var response = await actorInstance.Key.InvokeMethod(request);
-                    return response;
-                }
-
-                if (request.Headers.TryGetValue("requestType", out var requestType) &&
-                    requestType.ToString() == "notify")
-                {
-                    var instances = await _actorNodeManager.GetAllActorInstancesOfAModule(request);
-                    List<Task> tasks = new List<Task>();
-                    foreach (var instance in instances)
-                    {
-                        tasks.Add(instance.Key.InvokeMethod(request));
-                    }
-
-                    await Task.WhenAll(tasks);
-                }
-
-                return new ActorResponse(request);
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(" {Error}", exception.Message);
-                return new ActorResponse(new ActorRequest(), error: exception.Message);
-            }
+            _actorServiceDiscovery =
+                actorServiceDiscovery ?? throw new ArgumentNullException(nameof(actorServiceDiscovery));
         }
 
 
         public async Task RunSetup()
         {
             await _actorClusterManager.RefreshActorSystemClusterDetails();
-            _actorNodeManager.SetupEventHandler(HandleEvent);
             var actorNodeInfo = await _actorNodeManager.RefreshActorSystemNodeDetails();
-            _provider.GetRequiredService<IActorSystemTransport>();
             _actorServiceDiscovery.LoadActors(actorNodeInfo);
         }
 

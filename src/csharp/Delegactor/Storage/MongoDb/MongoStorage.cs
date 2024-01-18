@@ -164,23 +164,23 @@ namespace Delegactor.Storage.MongoDb
             var temp = _nodeCollection
                 .Find(x =>
                     x.Entry.ClusterName == clusterInfo.ClusterName
-                    && x.Entry.NodeType == nameof(ActorSystem)
+                    && x.Entry.NodeType == nameof(ActorSystemService)
                     && x.LastUpdateTime >= DateTime.UtcNow
                         .Subtract(TimeSpan.FromSeconds(clusterInfo.HeartBeatWindowInSeconds * 3))).ToList();
 
             var partitions = temp
-                .Where(x => x.Entry.PartitionNumber != null && x.Entry.NodeRole == "partition")
+                .Where(x => x.Entry.PartitionNumber != null && x.Entry.NodeRole == ConstantKeys.PartitionKey)
                 .OrderBy(x => x.Entry.PartitionNumber).ToList();
 
 
             var replicas = temp
-                .Where(x => x.Entry.PartitionNumber != null && x.Entry.NodeRole == "replica")
+                .Where(x => x.Entry.PartitionNumber != null && x.Entry.NodeRole == ConstantKeys.ReplicaKey)
                 .OrderBy(x => x.Entry.PartitionNumber).ToList();
 
 
             var result = await GetPartitionSlot(actorNodeInfo, clusterInfo, partitions);
 
-            if (result.NodeState != "operational")
+            if (result.NodeState != ConstantKeys.OperationalKey)
             {
                 result = await GetReplciaSlot(actorNodeInfo, clusterInfo, replicas);
             }
@@ -194,21 +194,21 @@ namespace Delegactor.Storage.MongoDb
             var temp = _nodeCollection
                 .Find(x =>
                     x.Entry.ClusterName == clusterInfo.ClusterName
-                    && x.Entry.NodeType == nameof(ActorSystem)
+                    && x.Entry.NodeType == nameof(ActorSystemService)
                     && x.LastUpdateTime >= DateTime.UtcNow
                         .Subtract(TimeSpan.FromSeconds(clusterInfo.HeartBeatWindowInSeconds * 3))).ToList();
 
             var partitionsCheckSum = temp
                 .Where(x => x.Entry.PartitionNumber != null
-                            && x.Entry.NodeRole == "partition"
-                            && x.Entry.NodeState == "operational")
+                            && x.Entry.NodeRole == ConstantKeys.PartitionKey
+                            && x.Entry.NodeState == ConstantKeys.OperationalKey)
                 .Sum(x => x.Entry.PartitionNumber);
 
 
             var replicasChecksum = temp
                 .Where(x => x.Entry.PartitionNumber != null
-                            && x.Entry.NodeRole == "replica"
-                            && x.Entry.NodeState == "operational")
+                            && x.Entry.NodeRole == ConstantKeys.ReplicaKey
+                            && x.Entry.NodeState == ConstantKeys.OperationalKey)
                 .Sum(x => x.Entry.PartitionNumber);
 
             return (partitionsCheckSum, replicasChecksum);
@@ -220,7 +220,7 @@ namespace Delegactor.Storage.MongoDb
             var result = _nodeCollection
                 .Find(x =>
                     x.Entry.ClusterName == clusterInfo.ClusterName
-                    && x.Entry.NodeType == nameof(ActorSystem)
+                    && x.Entry.NodeType == nameof(ActorSystemService)
                     && x.Entry.PartitionNumber == partitionNumber
                     && x.Entry.NodeRole == nodeRole
                     && x.LastUpdateTime >= DateTime.UtcNow
@@ -241,7 +241,7 @@ namespace Delegactor.Storage.MongoDb
 
                     partitions[i].Id = actorNodeInfo.InstanceId;
                     partitions[i].Entry.InstanceId = actorNodeInfo.InstanceId;
-                    partitions[i].Entry.NodeState = "operational";
+                    partitions[i].Entry.NodeState = ConstantKeys.OperationalKey;
 
                     await UpsertNodeInfo(partitions[i].Entry);
 
@@ -253,13 +253,13 @@ namespace Delegactor.Storage.MongoDb
                 partitions.Max(x => x.Entry.PartitionNumber) < clusterInfo.PartitionsNodes - 1)
             {
                 actorNodeInfo.PartitionNumber = partitions.Count;
-                actorNodeInfo.NodeRole = "partition";
-                actorNodeInfo.NodeState = "operational";
+                actorNodeInfo.NodeRole = ConstantKeys.PartitionKey;
+                actorNodeInfo.NodeState = ConstantKeys.OperationalKey;
                 await UpsertNodeInfo(actorNodeInfo);
                 return actorNodeInfo;
             }
 
-            actorNodeInfo.NodeState = "Not-A-Partition";
+            actorNodeInfo.NodeState = ConstantKeys.NodeStateNotAPartition;
             return actorNodeInfo;
         }
 
@@ -273,7 +273,7 @@ namespace Delegactor.Storage.MongoDb
                     await _nodeCollection.DeleteOneAsync(x => x.Id == replicas[i].Id);
 
                     replicas[i].Entry.InstanceId = actorNodeInfo.InstanceId;
-                    replicas[i].Entry.NodeState = "operational";
+                    replicas[i].Entry.NodeState = ConstantKeys.OperationalKey;
 
                     await UpsertNodeInfo(replicas[i].Entry);
 
@@ -284,14 +284,14 @@ namespace Delegactor.Storage.MongoDb
             if (replicas.Count == 0 || replicas.Max(x => x.Entry.PartitionNumber) < clusterInfo.ReplicaNodes - 1)
             {
                 actorNodeInfo.PartitionNumber = replicas.Count;
-                actorNodeInfo.NodeRole = "replica";
-                actorNodeInfo.NodeState = "operational";
+                actorNodeInfo.NodeRole = ConstantKeys.ReplicaKey;
+                actorNodeInfo.NodeState = ConstantKeys.OperationalKey;
                 await UpsertNodeInfo(actorNodeInfo);
                 return actorNodeInfo;
             }
 
-            actorNodeInfo.NodeRole = "no-role";
-            actorNodeInfo.NodeState = "failed";
+            actorNodeInfo.NodeRole = ConstantKeys.NoNodeRoleKey;
+            actorNodeInfo.NodeState = ConstantKeys.NodeStateFailed;
             return actorNodeInfo;
         }
     }

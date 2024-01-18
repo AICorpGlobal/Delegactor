@@ -1,8 +1,6 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
 using System.Collections.Concurrent;
-using System.Text;
-using System.Text.Json;
 using Delegactor.Models;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -16,20 +14,14 @@ namespace Delegactor.Transport
             _callBackTasksSource;
 
         private readonly ILogger<DotNettyTcpClientTransportHandler> _logger;
-        private readonly ActorClusterInfo _clusterInfo;
-        private readonly ActorNodeInfo _nodeInfo;
 
         public DotNettyTcpClientTransportHandler(
             ConcurrentDictionary<string, KeyValuePair<TaskCompletionSource<ActorResponse>, DateTime>>
                 callBackTasksSource,
-            ILogger<DotNettyTcpClientTransportHandler> logger,
-            ActorClusterInfo clusterInfo,
-            ActorNodeInfo nodeInfo)
+            ILogger<DotNettyTcpClientTransportHandler> logger)
         {
             _callBackTasksSource = callBackTasksSource;
             _logger = logger;
-            _clusterInfo = clusterInfo;
-            _nodeInfo = nodeInfo;
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -41,8 +33,7 @@ namespace Delegactor.Transport
 
         public override void ChannelRead(IChannelHandlerContext context, object message)
         {
-            var str = ((IByteBuffer)message).ToString(Encoding.UTF8);
-            var response = JsonSerializer.Deserialize<ActorResponse>(str);
+            var response = SerializationUtils.Deserialize<ActorResponse>((IByteBuffer)message);
             if (response == null)
             {
                 _logger.LogWarning("Bad Request");
@@ -58,12 +49,14 @@ namespace Delegactor.Transport
             //     response.CorrelationId,
             //     response);
 
-            var correlationId = response.Headers.ContainsKey("origin-correlationId")
-                ? response.Headers["origin-correlationId"]
+            var correlationId = response.Headers.TryGetValue(ConstantKeys.OriginCorrelationIdKey, out var header)
+                ? header
                 : response.CorrelationId;
+
             if (!_callBackTasksSource.TryRemove(correlationId.ToString(), out var tcs))
             {
-                _logger.LogInformation("ghost message {CorrelationId}", response.CorrelationId);
+                _logger.LogInformation("ghost message with correlationId {CorrelationId} arrived",
+                    response.CorrelationId);
 
                 return;
             }
@@ -72,7 +65,10 @@ namespace Delegactor.Transport
         }
 
 
-        public override void ChannelReadComplete(IChannelHandlerContext context) => context.Flush();
+        public override void ChannelReadComplete(IChannelHandlerContext context)
+        {
+            context.Flush();
+        }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {

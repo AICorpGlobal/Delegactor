@@ -5,12 +5,6 @@ using Delegactor.Models;
 
 namespace Delegactor.Core
 {
-    public interface IActorClusterManager
-    {
-        Task<ActorClusterInfo> RefreshActorSystemClusterDetails();
-        Task<ActorClusterInfo> RefreshActorClientClusterDetails();
-    }
-
     public class ActorClusterManager : IActorClusterManager
     {
         private readonly ActorClusterInfo _actorClusterInfo;
@@ -39,7 +33,7 @@ namespace Delegactor.Core
                 && (clusterInfo.PartitionsNodes != _actorClusterInfo.PartitionsNodes
                     || clusterInfo.ReplicaNodes != _actorClusterInfo.ReplicaNodes))
             {
-                _actorClusterInfo.ClusterState = "re-partitioning";
+                _actorClusterInfo.ClusterState = ConstantKeys.ClusterStateRepartitioning;
                 _actorClusterInfo.PartitionsNodes = clusterInfo.PartitionsNodes;
                 _actorClusterInfo.ReplicaNodes = clusterInfo.ReplicaNodes;
                 _actorClusterInfo.Signature = clusterInfo.Signature;
@@ -50,7 +44,7 @@ namespace Delegactor.Core
                 return _actorClusterInfo;
             }
 
-            _actorClusterInfo.ClusterState = "operational";
+            _actorClusterInfo.ClusterState = ConstantKeys.ClusterStateOperational;
             await _store.UpsertClusterInfo(_actorClusterInfo);
             return clusterInfo;
         }

@@ -1,6 +1,5 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,7 +11,7 @@ namespace DelegactorCodeGen
 {
     public static class ProxyGenCodeTemplate
     {
-        private static string _template = """"
+        private static readonly string _template = """"
 // Licensed to the AiCorp- Buyconn.
 
 using System;
@@ -138,12 +137,12 @@ namespace {{namespacename}}
 
         public static string Generate(ProxyGenModel interfaceDefinitions)
         {
-            List<Dictionary<string, object>> methodList = new List<Dictionary<string, object>>();
+            var methodList = new List<Dictionary<string, object>>();
             foreach (var method in interfaceDefinitions.MethodsList)
             {
                 var parameterCollections = method.ParametersCollection.Distinct()
                     .Select(x => new Dictionary<string, object> { { "parameter", x.Trim() } }).ToList();
-                Dictionary<string, object> detail = new Dictionary<string, object>()
+                var detail = new Dictionary<string, object>
                 {
                     { "method.isfromreplica", method.IsFromReplica.Trim() },
                     { "method.isenabled", method.IsEnabled.Trim() },
@@ -151,20 +150,22 @@ namespace {{namespacename}}
                     { "method.methodname", method.MethodName.Trim() },
                     { "method.parameterdeclarations", method.ParameterDeclarations },
                     { "method.parameterscollection", parameterCollections },
-                    { "method.returntype", CleanNewLine(method.ReturnType.Trim()) },
+                    { "method.returntype", CleanNewLine(method.ReturnType.Trim()) }
                 };
                 methodList.Add(detail);
             }
 
-            Dictionary<string, object> keyCollections = new Dictionary<string, object>()
+            var keyCollections = new Dictionary<string, object>
             {
                 { "interfacename", interfaceDefinitions.InterfaceName.Trim() },
-                { "namespacenamecollection", interfaceDefinitions.NameSpaceNameCollection.Distinct()
-                    .Select(x => new Dictionary<string, object> { { "usingdirective", x.Trim() } }).ToList() },
+                {
+                    "namespacenamecollection", interfaceDefinitions.NameSpaceNameCollection.Distinct()
+                        .Select(x => new Dictionary<string, object> { { "usingdirective", x.Trim() } }).ToList()
+                },
                 { "classname", interfaceDefinitions.ClassName.Trim() },
                 { "modulename", CleanNewLine(interfaceDefinitions.ModuleName.Trim()) },
                 { "namespacename", CleanNewLine(interfaceDefinitions.NameSpaceName.Trim()) },
-                { "methodslist", methodList },
+                { "methodslist", methodList }
             };
 
 
@@ -176,14 +177,17 @@ namespace {{namespacename}}
 
             return stringBuilder.ToString();
         }
+
         public static string ReplaceStartTokenOf(this string returnType, string token, string subsititute)
         {
-            return returnType.StartsWith(token.CleanNewLine()) ? $"{subsititute}{returnType.Substring(token.Length, returnType.Length - token.Length)}" : returnType;
+            return returnType.StartsWith(token.CleanNewLine())
+                ? $"{subsititute}{returnType.Substring(token.Length, returnType.Length - token.Length)}"
+                : returnType;
         }
 
         public static string CleanNewLine(this string input)
         {
-            char[] output = new char[input.Length];
+            var output = new char[input.Length];
 
             for (int i = 0, j = 0; i < input.Length; i++)
             {
@@ -202,7 +206,7 @@ namespace {{namespacename}}
         public static int ProcessBlock(string buffer, int processingTracker, StringBuilder writer,
             Dictionary<string, object> keyCollections)
         {
-            int index = processingTracker;
+            var index = processingTracker;
             while (index < buffer.Length)
             {
                 var statement = ReadStatement(buffer, index == 0 ? 1 : index);
@@ -213,7 +217,7 @@ namespace {{namespacename}}
                 {
                     var tokens = statement.StatementText.Trim('{', '}')
                         .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    string token = tokens[0];
+                    var token = tokens[0];
                     var tryGetValue = keyCollections.TryGetValue(token, out var valueData);
 
                     writer.Append(buffer.Substring(index, statement.StartIndex - index));
@@ -274,7 +278,7 @@ namespace {{namespacename}}
             var statementTokens = ifStatement.StatementText.Trim('{', '}')
                 .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
-            string operand = statementTokens[2];
+            var operand = statementTokens[2];
 
             var lhs = keyCollections.TryGetValue(statementTokens[1], out var valueData)
                 ? valueData.ToString().Trim()
@@ -283,7 +287,7 @@ namespace {{namespacename}}
                 ? valueDataRhs.ToString().Trim()
                 : statementTokens[3].Trim();
 
-            bool conditionalResult = false;
+            var conditionalResult = false;
 
             lhs = lhs == "\"\"" ? string.Empty : lhs;
             rhs = rhs == "\"\"" ? string.Empty : rhs;
@@ -291,16 +295,16 @@ namespace {{namespacename}}
             switch (operand)
             {
                 case "equals":
-                    conditionalResult = lhs.ToString().Trim().Equals(rhs.ToString().Trim());
+                    conditionalResult = lhs.Trim().Equals(rhs.Trim());
                     break;
 
                 case "not":
-                    conditionalResult = !(lhs.ToString().Trim().Equals(rhs.ToString().Trim()));
+                    conditionalResult = !lhs.Trim().Equals(rhs.Trim());
                     break;
             }
 
-            var outParts = statementText.Split(new string[] { "{{else}}" }, StringSplitOptions.RemoveEmptyEntries);
-            outParts = outParts.Length <= 1 ? new[] { outParts[0], string.Empty, } : outParts;
+            var outParts = statementText.Split(new[] { "{{else}}" }, StringSplitOptions.RemoveEmptyEntries);
+            outParts = outParts.Length <= 1 ? new[] { outParts[0], string.Empty } : outParts;
 
             var output = conditionalResult ? outParts[0] : outParts[1];
 
@@ -319,7 +323,7 @@ namespace {{namespacename}}
 
             var startIndex = statement.StatementText.Length;
             var lastIndexOf =
-                    loopStatement.StatementText.LastIndexOf("{{end}}") + "{{end}}".Length;
+                loopStatement.StatementText.LastIndexOf("{{end}}") + "{{end}}".Length;
 
             var statementTextLength = lastIndexOf - startIndex;
 
@@ -336,28 +340,12 @@ namespace {{namespacename}}
             return statement.StartIndex + loopStatement.StatementText.Length;
         }
 
-        public class ReadResult
-        {
-            public string StatementText { get; }
-            public bool Found { get; }
-            public int StartIndex { get; }
-            public int EndIndex { get; }
-
-            public ReadResult(string statementText, bool found, int startIndex, int endIndex)
-            {
-                this.StatementText = statementText;
-                this.Found = found;
-                this.StartIndex = startIndex;
-                this.EndIndex = endIndex;
-            }
-        }
-
         public static ReadResult ReadLoopBlock(string buffer,
             int startPosition)
         {
-            string startMarker = "for";
-            string endMarker = "end";
-            Stack<string> operatorStack = new Stack<string>();
+            var startMarker = "for";
+            var endMarker = "end";
+            var operatorStack = new Stack<string>();
             var index = startPosition;
 
             ReadResult statement;
@@ -369,7 +357,7 @@ namespace {{namespacename}}
                 {
                     var tokens = statement.StatementText.Trim('{', '}')
                         .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    string token = tokens[0];
+                    var token = tokens[0];
 
                     switch (token)
                     {
@@ -402,7 +390,7 @@ namespace {{namespacename}}
         public static ReadResult ReadIfBlock(string buffer,
             int startPosition)
         {
-            Stack<string> operatorStack = new Stack<string>();
+            var operatorStack = new Stack<string>();
             var index = startPosition;
 
             ReadResult statement;
@@ -414,7 +402,7 @@ namespace {{namespacename}}
                 {
                     var tokens = statement.StatementText.Trim('{', '}')
                         .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    string token = tokens[0];
+                    var token = tokens[0];
 
                     switch (token)
                     {
@@ -484,7 +472,7 @@ namespace {{namespacename}}
             startPosition -= 2;
 
 
-            int endPosition = startPosition;
+            var endPosition = startPosition;
 
             if (startPosition == buffer.Length)
             {
@@ -504,6 +492,22 @@ namespace {{namespacename}}
                 ? new ReadResult("", false, startPosition, endPosition)
                 : new ReadResult(buffer.Substring(startPosition, endPosition - startPosition), true, startPosition,
                     SafeWrap(buffer, endPosition));
+        }
+
+        public class ReadResult
+        {
+            public ReadResult(string statementText, bool found, int startIndex, int endIndex)
+            {
+                StatementText = statementText;
+                Found = found;
+                StartIndex = startIndex;
+                EndIndex = endIndex;
+            }
+
+            public string StatementText { get; }
+            public bool Found { get; }
+            public int StartIndex { get; }
+            public int EndIndex { get; }
         }
     }
 }

@@ -1,8 +1,6 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
-using System.Text;
-using System.Text.Json;
-using Delegactor.Core;
+using Delegactor.Interfaces;
 using Delegactor.Models;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -11,11 +9,11 @@ using Microsoft.Extensions.Logging;
 namespace Delegactor.Transport
 {
     public class DotNettyTcpServerTransportHandler : ChannelHandlerAdapter
-    { 
+    {
         private readonly Func<ActorRequest, Task<ActorResponse>> _callBack;
-        private readonly ILogger<DotNettyTcpServerTransportHandler> _logger;
         private readonly ActorClusterInfo _clusterInfo;
-        private ActorNodeInfo _nodeInfo;
+        private readonly ILogger<DotNettyTcpServerTransportHandler> _logger;
+        private readonly ActorNodeInfo _nodeInfo;
         private readonly ITaskThrottler<DotNettyTransport> _taskThrottler;
 
         public DotNettyTcpServerTransportHandler(
@@ -41,8 +39,7 @@ namespace Delegactor.Transport
 
         public override void ChannelRead(IChannelHandlerContext context, object message)
         {
-            var str = ((IByteBuffer)message).ToString(Encoding.UTF8);
-            var request = JsonSerializer.Deserialize<ActorRequest>(str);
+            var request = SerializationUtils.Deserialize<ActorRequest>((IByteBuffer)message);
             if (request == null)
             {
                 _logger.LogWarning("Bad Request");
@@ -50,24 +47,26 @@ namespace Delegactor.Transport
             }
 
             HandleMessage(context, request);
-            
         }
 
         private void HandleMessage(IChannelHandlerContext context, ActorRequest request)
         {
             // _logger.LogInformation("got request {CorrelationId} ", request.CorrelationId);
 
-            var partitionKey = _clusterInfo.ComputeKey(request.Uid);
+            var partitionKey =
+                NodeManagerUtils.ComputePartitionNumber(_clusterInfo, request.PartitionType, request.Uid);
+
             if (request.IsNotityRequest == false &&
-                partitionKey != _nodeInfo.GetSubscriptionId(_clusterInfo))
+                _nodeInfo.NodeRole == request.PartitionType &&
+                partitionKey != _nodeInfo.PartitionNumber)
             {
                 var resp = new ActorResponse(request)
                 {
                     Response = new InvalidOperationException().Message,
                     IsError = true,
-                    Error = "Request arrived at Invalid Partition"
+                    Error = "Request arrived at Invalid Partition or Type"
                 };
-                context.WriteAndFlushAsync(DotNettyUtils.Serialize(resp)).Wait();
+                context.WriteAndFlushAsync(SerializationUtils.SerializeToIByteBuffer(resp)).Wait();
 
                 return;
             }
@@ -76,14 +75,17 @@ namespace Delegactor.Transport
             {
                 var resp = await _callBack(request);
 
-                await context.WriteAndFlushAsync(DotNettyUtils.Serialize(resp));
+                await context.WriteAndFlushAsync(SerializationUtils.SerializeToIByteBuffer(resp));
             }).Wait(); //.GetAwaiter().GetResult();
 
             // _logger.LogInformation("Enqueued request {CorrelationId}", request.CorrelationId);
         }
 
 
-        public override void ChannelReadComplete(IChannelHandlerContext context) => context.Flush();
+        public override void ChannelReadComplete(IChannelHandlerContext context)
+        {
+            context.Flush();
+        }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {

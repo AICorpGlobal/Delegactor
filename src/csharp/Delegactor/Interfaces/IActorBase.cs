@@ -3,11 +3,12 @@
 using Delegactor.CodeGen;
 using Delegactor.Models;
 
-namespace Delegactor.Core
+namespace Delegactor.Interfaces
 {
-    public interface IActorBase:IDelegactorProxy<IActorBase>
+    public interface IActorBase : IDelegactorProxy<IActorBase>
     {
         public int MaxPartitions { get; set; }
+
         // string ActorId { get; set; }
         public TimeSpan ActivationWindow { get; set; }
         public string Module { get; set; }

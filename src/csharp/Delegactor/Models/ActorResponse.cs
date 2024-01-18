@@ -4,7 +4,7 @@ using MessagePack;
 
 namespace Delegactor.Models
 {
-    [MessagePackObject()]
+    [MessagePackObject]
     public class ActorResponse
     {
         public ActorResponse(ActorRequest request, string response = "", string error = "")

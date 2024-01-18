@@ -13,8 +13,8 @@ namespace Delegactor.Core
 
         public ActorNodeResolver(ActorClusterInfo clusterInfo, IStorage storage)
         {
-            _clusterInfo = clusterInfo;
-            _storage = storage;
+            _clusterInfo = clusterInfo ?? throw new ArgumentNullException(nameof(clusterInfo));
+            _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         }
 
         public async Task<IPEndPoint> GetIpAddress(int partitionNumber, string partitionType)

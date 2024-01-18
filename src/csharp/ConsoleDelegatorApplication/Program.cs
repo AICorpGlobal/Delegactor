@@ -36,7 +36,7 @@ namespace ConsoleDelegatorApplication // Note: actual namespace depends on the p
                     services.AddClusterConfig(
                         new ActorNodeInfo
                         {
-                            NodeType = nameof(ActorSystem),
+                            NodeType = nameof(ActorSystemService),
                             ClusterName = Environment.MachineName,
                             InstanceId = Guid.NewGuid().ToString(),
                             PartitionNumber = null,
@@ -48,7 +48,7 @@ namespace ConsoleDelegatorApplication // Note: actual namespace depends on the p
                         {
                             ClusterName = Environment.MachineName,
                             PartitionsNodes = 1,
-                            ReplicaNodes = 1,
+                            ReplicaNodes = 0,
                             HeartBeatWindowInSeconds = 5,
                             LastUpdateTime = DateTime.UtcNow,
                             EphemeralPortStart = ephemeralPortStart,
@@ -56,7 +56,7 @@ namespace ConsoleDelegatorApplication // Note: actual namespace depends on the p
                         }
                     );
                     services.AddMongoDbDelegactorStorage("mongodb://localhost:27017/", "ActorSystemDb");
-                    services.AddDelegactorMessageBackPlane();
+                    services.AddDelegactorMessageBackPlane("amqp://guest:guest@rabbitmq.mq:5672");
                     services.AddDelegactorSystemDependencies(new List<Assembly>
                     {
                         typeof(ICalculator).Assembly, typeof(Calculator).Assembly

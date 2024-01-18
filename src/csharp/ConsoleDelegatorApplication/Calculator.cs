@@ -1,5 +1,6 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Calcluate.Contracts;
@@ -11,10 +12,11 @@ namespace ConsoleDelegatorApplication
 {
     public class Calculator : ActorBase, ICalculator
     {
+        private static volatile int counter = 1;
+        private static volatile Stopwatch s_stopwatch = new();
         private readonly ActorNodeInfo _actorNodeInfo;
         private readonly ILogger<Calculator> _logger;
         private int sum;
-        private static volatile int counter = 1;
 
 
         public Calculator()
@@ -35,11 +37,17 @@ namespace ConsoleDelegatorApplication
             // _logger.LogInformation(" {ActorId} in {TypeOfNode} calculating sum", ActorId, _actorNodeInfo.NodeRole);
             sum += a + b;
             // await Task.Delay(200);
-
+            var prev = counter;
             Interlocked.Increment(ref counter);
-            if (counter >= 10_00_000)
+            if (prev == 1 && counter==2)
             {
-                _logger.LogInformation("Reached");
+                s_stopwatch = Stopwatch.StartNew();
+            }
+
+            if (counter >= 4_99_970)
+            {
+                s_stopwatch.Stop();
+                _logger.LogInformation("Reached at {StopwatchElapsedMilliseconds}", s_stopwatch.ElapsedMilliseconds);
             }
 
             return sum;

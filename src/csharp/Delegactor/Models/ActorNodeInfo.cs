@@ -1,7 +1,5 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
-using Delegactor.Core;
-
 namespace Delegactor.Models
 {
     public class ActorNodeInfo
@@ -50,19 +48,6 @@ namespace Delegactor.Models
             IpAddress = actorNodeInfo.IpAddress;
             Port = actorNodeInfo.Port;
             return this;
-        }
-
-        public int GetSubscriptionId(ActorClusterInfo clusterInfo)
-        {
-            //buggy needs to fix this to scale further
-
-            var partitionNumber = PartitionNumber.GetValueOrDefault(0);
-
-            int nodeBundle = NodeRole == "partition"
-                ? partitionNumber
-                : (partitionNumber % clusterInfo.PartitionsNodes);
-
-            return nodeBundle;
         }
     }
 }

@@ -1,7 +1,6 @@
 ﻿// Licensed to the AiCorp- Buyconn.
 
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -76,7 +75,7 @@ namespace DelegactorCodeGen
         // </summary>
         internal class InterfaceSyntaxReceiver : ISyntaxReceiver
         {
-            public List<ProxyGenModel> Collection { get; } = new List<ProxyGenModel>();
+            public List<ProxyGenModel> Collection { get; } = new();
 
 
             // <summary>
@@ -121,11 +120,12 @@ namespace DelegactorCodeGen
                                         var parameterListParameters =
                                             methodDeclarationSyntax.ParameterList.Parameters.ToList();
 
-                                        var remoteInvokeAttributteDetails = GetRemoteInvokeAttributteDetails(methodDeclarationSyntax);
+                                        var remoteInvokeAttributteDetails =
+                                            GetRemoteInvokeAttributteDetails(methodDeclarationSyntax);
 
                                         var returnType = methodDeclarationSyntax.ReturnType.GetText().ToString();
 
-                                        returnType = ProxyGenCodeTemplate.ReplaceStartTokenOf(returnType.Trim(), "Task", "");
+                                        returnType = returnType.Trim().ReplaceStartTokenOf("Task", "");
 
                                         var method = new Method
                                         {
@@ -134,9 +134,13 @@ namespace DelegactorCodeGen
                                             ParametersCollection = parameterListParameters
                                                 .Select(x => x.Identifier.Text).ToList(),
                                             ReturnType = returnType,
-                                            IsFromReplica = remoteInvokeAttributteDetails.isFromReplicaFlagTrue ? "replica" : "partition",
+                                            IsFromReplica =
+                                                remoteInvokeAttributteDetails.isFromReplicaFlagTrue
+                                                    ? "replica"
+                                                    : "partition",
                                             IsEnabled = remoteInvokeAttributteDetails.isEnabled ? "true" : "false",
-                                            IsBroadcastNotify = remoteInvokeAttributteDetails.isBroadcastNotify ? "true" : "false",
+                                            IsBroadcastNotify =
+                                                remoteInvokeAttributteDetails.isBroadcastNotify ? "true" : "false",
                                             MethodName = methodDeclarationSyntax.Identifier.Text
                                         };
 
@@ -152,8 +156,9 @@ namespace DelegactorCodeGen
             }
 
 
-            private static ( bool isFromReplicaFlagTrue, bool isEnabled, bool isBroadcastNotify) GetRemoteInvokeAttributteDetails(
-                MethodDeclarationSyntax methodDeclarationSyntax)
+            private static ( bool isFromReplicaFlagTrue, bool isEnabled, bool isBroadcastNotify)
+                GetRemoteInvokeAttributteDetails(
+                    MethodDeclarationSyntax methodDeclarationSyntax)
             {
                 var isFromReplicaFlagTrue = false;
                 var isEnabled = false;
@@ -163,9 +168,9 @@ namespace DelegactorCodeGen
                 {
                     foreach (var attributeSyntax in attributeListSyntax.Attributes)
                     {
-                        if (attributeSyntax.Name.ToString()=="RemoteInvokableMethod" )
+                        if (attributeSyntax.Name.ToString() == "RemoteInvokableMethod")
                         {
-                            foreach ( var argument in attributeSyntax.ArgumentList.Arguments)
+                            foreach (var argument in attributeSyntax.ArgumentList.Arguments)
                             {
                                 if (argument.NameColon is NameColonSyntax nameColonSyntax)
                                 {
@@ -208,10 +213,6 @@ namespace DelegactorCodeGen
 
                 return (isFromReplicaFlagTrue, isEnabled, isBroadcastNotify);
             }
-        }
-
-        public void Initialize(IncrementalGeneratorInitializationContext context)
-        {
         }
     }
 }

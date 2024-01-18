@@ -2,7 +2,7 @@
 
 using System.Net;
 
-namespace Delegactor.Core
+namespace Delegactor.Interfaces
 {
     public interface IActorNodeResolver
     {

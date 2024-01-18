@@ -10,11 +10,14 @@ namespace Delegactor.Interfaces
         Task ReBuildNode();
         Task<KeyValuePair<ActorBase, ActorStates>> GetActorInstance(ActorRequest request);
         Task RunActorCleanUp();
+
         Task<ActorNodeInfo> RefreshActorSystemNodeDetails();
-        void SetupEventHandler(Func<ActorRequest, Task<ActorResponse>> handleEvent);
+
+        // void SetupEventHandler(Func<ActorRequest, Task<ActorResponse>> handleEvent);
         Task<ActorNodeInfo> RefreshActorClientNodeDetails();
         void TimeOutTasks();
         Task<List<KeyValuePair<ActorBase, ActorStates>>> GetAllActorInstancesOfAModule(ActorRequest request);
         Task ShutDown();
+        Task<ActorResponse> HandleEvent(ActorRequest request);
     }
 }

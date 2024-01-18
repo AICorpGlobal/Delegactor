@@ -8,32 +8,30 @@ using Microsoft.Extensions.Logging;
 
 namespace Delegactor.Core
 {
-    public class ActorClient : BackgroundService, IActorClient
+    public class ActorClientService : BackgroundService, IActorClient
     {
-        private readonly ActorClusterInfo _actorClusterInfo;
         private readonly IActorClusterManager _actorClusterManager;
         private readonly ActorNodeInfo _actorNodeInfo;
         private readonly IActorNodeManager _actorNodeManager;
-        private readonly ILogger<ActorSystem> _logger;
+        private readonly ILogger<ActorSystemService> _logger;
         private readonly IServiceProvider _provider;
         private IActorSystemTransport _actorSystemTransport;
-        private Func<ActorRequest, Task<ActorResponse>> _handleEvent;
-        private string? _partition;
 
 
-        public ActorClient(
-            ActorClusterInfo actorClusterInfo,
+        public ActorClientService(
             ActorNodeInfo actorNodeInfo,
             IActorClusterManager actorClusterManager,
             IActorNodeManager actorNodeManager,
             IServiceProvider provider,
-            ILogger<ActorSystem> logger)
+            IActorSystemTransport actorSystemTransport,
+            ILogger<ActorSystemService> logger)
         {
-            _actorClusterInfo = actorClusterInfo;
             _actorNodeInfo = actorNodeInfo ?? throw new ArgumentNullException(nameof(actorNodeInfo));
-            _actorClusterManager = actorClusterManager;
-            _actorNodeManager = actorNodeManager;
+            _actorClusterManager = actorClusterManager ?? throw new ArgumentNullException(nameof(actorClusterManager));
+            _actorNodeManager = actorNodeManager ?? throw new ArgumentNullException(nameof(actorNodeManager));
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+            _actorSystemTransport =
+                actorSystemTransport ?? throw new ArgumentNullException(nameof(actorSystemTransport));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -42,7 +40,8 @@ namespace Delegactor.Core
             _actorSystemTransport = _provider.GetRequiredService<IActorSystemTransport>();
 
             await HeartBeatUpdate();
-            _actorSystemTransport.Init(_actorNodeInfo, _handleEvent);
+
+            _actorSystemTransport.Init(_actorNodeInfo, _actorNodeManager.HandleEvent);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -56,7 +55,7 @@ namespace Delegactor.Core
                     while (await timer.WaitForNextTickAsync(stoppingToken))
                     {
                         ++step;
- 
+
                         await HeartBeatUpdate();
 
                         if (step < 240)
@@ -73,6 +72,8 @@ namespace Delegactor.Core
                     _logger.LogInformation(" Hosted Service is stopping.");
                 }
             }
+            _actorSystemTransport.Shutdown();
+
             await _actorNodeManager.ShutDown();
         }
 

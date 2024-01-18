@@ -15,14 +15,6 @@ namespace Delegactor.Models
         public int EphemeralPortStart { get; set; }
         public int EphemeralPortEnd { get; set; }
 
-        public int ComputeKey(string argKey)
-        {
-            if (PartitionsNodes == 0)
-                return PartitionsNodes;
-
-            return argKey.ToCharArray().Sum(x => x * 7) % PartitionsNodes;
-        }
-
         public ActorClusterInfo Set(ActorClusterInfo clusterInfo)
         {
             ClusterName = clusterInfo.ClusterName;
