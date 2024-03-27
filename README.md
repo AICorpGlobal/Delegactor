@@ -63,6 +63,4 @@ Further work include.
 
 * Porting or implementing adaptors in other languages
    - Golang
-   - Rust
-   - C++
    - TypeScript/JavaScript
